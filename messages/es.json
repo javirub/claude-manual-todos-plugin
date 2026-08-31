@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "Tareas manuales",
+    "tagline": "Lo que sólo puedes hacer tú, por proyecto.",
+    "language": "Idioma"
+  },
+  "rail": {
+    "projects": "Proyectos",
+    "repositories": "Repositorios",
+    "allProjects": "Todos los proyectos",
+    "overdueTitle": "{count, plural, one {# vencida} other {# vencidas}}"
+  },
+  "list": {
+    "allProjectsLede": "Cada tarea lleva el color de su proyecto.",
+    "noProjectsYet": "Todavía no hay ningún proyecto. Claude creará el primero cuando tenga que dejarte una tarea.",
+    "open": "Pendientes",
+    "completed": "Completadas",
+    "all": "Todas",
+    "searchPlaceholder": "Buscar en títulos y pasos…",
+    "searchLabel": "Buscar tareas",
+    "clearFilters": "limpiar",
+    "clearFiltersLabel": "Quitar todos los filtros",
+    "noSteps": "sin pasos",
+    "acrossProjects": "transversal",
+    "emptyFiltered": "Ninguna tarea encaja con estos filtros.",
+    "emptyDone": "Todavía no has completado ninguna.",
+    "emptyOpen": "No queda nada pendiente aquí."
+  },
+  "bucket": {
+    "overdue": "Vencidas",
+    "today": "Hoy",
+    "week": "Esta semana",
+    "later": "Más adelante",
+    "none": "Sin fecha",
+    "done": "Completadas"
+  },
+  "due": {
+    "overdue": "{days, plural, one {venció ayer} other {venció hace # días}}",
+    "wasToday": "vencía hoy",
+    "today": "vence hoy",
+    "inDays": "{days, plural, one {vence mañana} other {vence en # días}}",
+    "on": "vence el {date}",
+    "doneToday": "hecha hoy",
+    "doneDaysAgo": "{days, plural, one {hecha ayer} other {hecha hace # días}}",
+    "doneOn": "hecha el {date}"
+  },
+  "detail": {
+    "primaryProject": "Proyecto principal",
+    "alsoInThisProject": "También pertenece a este proyecto",
+    "recordedByClaude": "registrada por Claude",
+    "progress": "{done} de {total} pasos",
+    "taskDone": "hecha",
+    "noStepsShort": "sin pasos",
+    "noSteps": "Esta tarea no tiene pasos: es una sola acción.",
+    "noPhase": "Sin fase",
+    "pickOne": "Elige una tarea",
+    "nothing": "Nada pendiente",
+    "nothingBody": "Cuando Claude deje algo que sólo puedas hacer tú, aparecerá aquí.",
+    "countOpen": "{count, plural, one {Hay # pendiente.} other {Hay # pendientes.}}",
+    "countOverdue": "{count, plural, one {Hay # pendiente} other {Hay # pendientes}}, {overdue} de ellas vencidas.",
+    "blocks": "bloquea a",
+    "blockedBy": "bloqueada por",
+    "relates": "relacionada"
+  },
+  "step": {
+    "why": "por qué",
+    "resolvedInCode": "resuelto en código",
+    "resolvedInCodeTitle": "Claude lo resolvió en código",
+    "copy": "copiar",
+    "copied": "hecho",
+    "copyLabel": "Copiar {value}",
+    "copyManually": "Copia esto a mano:"
+  },
+  "notFound": {
+    "title": "Eso no existe",
+    "body": "La tarea o el proyecto que buscas no está en la base de datos.",
+    "action": "Ver todo"
+  }
+}

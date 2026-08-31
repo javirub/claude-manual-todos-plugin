@@ -1,0 +1,64 @@
+name: CI
+
+# Renovate opens pull requests here, so something has to check them.
+#
+# The matrix is not decoration: the plugin resolves a working directory to a
+# project by comparing paths, spawns and kills a detached server, and shells out
+# to whatever opens a URL — three things every operating system does differently.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing must not hide the state of the other two.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      CLAUDE_TASKS_DB: ${{ runner.temp }}/ci-tasks.db
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Only for the portability check below; nothing else runs on Node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Types, including message keys
+        run: bun run typecheck
+
+      - name: Tests
+        run: bun test
+
+      - name: Message catalogues
+        run: bun run lint:messages
+
+      - name: MCP handshake and tool inventory
+        run: bun scripts/mcp-smoke.ts
+
+      - name: Database written by Bun is readable by Node
+        run: node scripts/db-portability.mjs
+
+      - name: Build
+        run: bun run build
+
+      - name: Board starts, answers and stops
+        # Exercises the spawn, pidfile and shutdown path, which is where the
+        # differences between platforms actually bite.
+        run: |
+          bun bin/tasks.ts serve
+          bun bin/tasks.ts status
+          bun bin/tasks.ts stop

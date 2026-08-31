@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "Manual tasks",
+    "tagline": "What only you can do, by project.",
+    "language": "Language"
+  },
+  "rail": {
+    "projects": "Projects",
+    "repositories": "Repositories",
+    "allProjects": "All projects",
+    "overdueTitle": "{count, plural, one {# overdue} other {# overdue}}"
+  },
+  "list": {
+    "allProjectsLede": "Every task carries its project's colour.",
+    "noProjectsYet": "No projects yet. Claude will create the first one when it has a task to leave you.",
+    "open": "Open",
+    "completed": "Completed",
+    "all": "All",
+    "searchPlaceholder": "Search titles and steps…",
+    "searchLabel": "Search tasks",
+    "clearFilters": "clear",
+    "clearFiltersLabel": "Remove every filter",
+    "noSteps": "no steps",
+    "acrossProjects": "across projects",
+    "emptyFiltered": "No task matches these filters.",
+    "emptyDone": "You haven't completed any yet.",
+    "emptyOpen": "Nothing left to do here."
+  },
+  "bucket": {
+    "overdue": "Overdue",
+    "today": "Today",
+    "week": "This week",
+    "later": "Later",
+    "none": "No date",
+    "done": "Completed"
+  },
+  "due": {
+    "overdue": "{days, plural, one {overdue since yesterday} other {# days overdue}}",
+    "wasToday": "was due today",
+    "today": "due today",
+    "inDays": "{days, plural, one {due tomorrow} other {due in # days}}",
+    "on": "due {date}",
+    "doneToday": "done today",
+    "doneDaysAgo": "{days, plural, one {done yesterday} other {done # days ago}}",
+    "doneOn": "done {date}"
+  },
+  "detail": {
+    "primaryProject": "Primary project",
+    "alsoInThisProject": "Also belongs to this project",
+    "recordedByClaude": "recorded by Claude",
+    "progress": "{done} of {total} steps",
+    "taskDone": "done",
+    "noStepsShort": "no steps",
+    "noSteps": "This task has no steps: it is a single action.",
+    "noPhase": "No phase",
+    "pickOne": "Pick a task",
+    "nothing": "Nothing pending",
+    "nothingBody": "When Claude leaves something only you can do, it shows up here.",
+    "countOpen": "{count, plural, one {# task pending.} other {# tasks pending.}}",
+    "countOverdue": "{count, plural, one {# task pending} other {# tasks pending}}, {overdue} of them overdue.",
+    "blocks": "blocks",
+    "blockedBy": "blocked by",
+    "relates": "related"
+  },
+  "step": {
+    "why": "why",
+    "resolvedInCode": "resolved in code",
+    "resolvedInCodeTitle": "Claude resolved this in code",
+    "copy": "copy",
+    "copied": "copied",
+    "copyLabel": "Copy {value}",
+    "copyManually": "Copy this by hand:"
+  },
+  "notFound": {
+    "title": "That does not exist",
+    "body": "The task or project you are looking for is not in the database.",
+    "action": "See everything"
+  }
+}

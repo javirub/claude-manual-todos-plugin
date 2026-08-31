@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-manual-todos",
+  "description": "Tools for tracking the work an agent cannot finish on its own.",
+  "owner": {
+    "name": "javirub"
+  },
+  "plugins": [
+    {
+      "name": "claude-manual-todos-plugin",
+      "description": "The manual steps only you can do, recorded per project in SQLite and worked through on a board that looks different for every project. One project can span several repositories; one task can cut across several projects.",
+      "author": {
+        "name": "javirub"
+      },
+      "category": "productivity",
+      "source": "./",
+      "homepage": "https://github.com/javirub/claude-manual-todos-plugin"
+    }
+  ]
+}
