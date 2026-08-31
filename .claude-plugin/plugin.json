@@ -1,7 +1,7 @@
 {
   "name": "claude-manual-todos-plugin",
   "description": "Records, orders and tracks the manual tasks only the user can do: what is left waiting in a console, a dashboard or an account Claude cannot reach. Everything lives in SQLite and is shown on a Next.js board with a visual identity of its own per project, so a project can span several repositories and a task can cut across several projects.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "javirub"
   }
