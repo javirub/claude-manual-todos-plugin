@@ -20,11 +20,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
-    env:
-      CLAUDE_TASKS_DB: ${{ runner.temp }}/ci-tasks.db
-
     steps:
       - uses: actions/checkout@v5
+
+      # The runner context is not available in a job-level env block, only in
+      # steps, so the database path is exported here instead.
+      - name: Point the database at a scratch file
+        shell: bash
+        run: echo "CLAUDE_TASKS_DB=${{ runner.temp }}/ci-tasks.db" >> "$GITHUB_ENV"
 
       - uses: oven-sh/setup-bun@v2
         with:
