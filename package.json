@@ -15,18 +15,18 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
-    "next": "^16.3.3",
-    "next-intl": "^4.14.1",
+    "next": "^16.3.4",
+    "next-intl": "^4.14.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@eloqnt/cli": "^0.6.27",
+    "@eloqnt/cli": "^0.6.29",
     "@types/bun": "^1.4.0",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@types/react-dom": "^19.2.7",
     "typescript": "^7.0.2"
   },
   "engines": {

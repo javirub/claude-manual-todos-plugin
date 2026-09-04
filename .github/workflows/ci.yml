@@ -24,14 +24,14 @@ jobs:
       CLAUDE_TASKS_DB: ${{ runner.temp }}/ci-tasks.db
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       # Only for the portability check below; nothing else runs on Node.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
 
