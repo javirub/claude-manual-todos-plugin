@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { LATEST_VERSION, connect, migrate } from "@/lib/db";
 import {
   HueTooCloseError,
+  addProjectPath,
   createProject,
   listProjects,
   resolveProjectByPath,
@@ -79,6 +80,42 @@ describe("resolving a cwd to a project", () => {
     expect(resolveProjectByPath(db, "fixtures/costia-training")?.project.id).toBe(training.id);
 
     expect(resolveProjectByPath(db, "fixtures/somewhere-else")).toBeNull();
+  });
+
+  /*
+   * The superproject case, which cost a whole session: only `<repo>/frontend` was
+   * attached, a session opened at the repo root resolved to nothing, and the hook
+   * that would have named the board stayed silent.
+   */
+  test("resolve a directory that sits above a registered path", () => {
+    const db = freshDb();
+    const costia = createProject(db, {
+      name: "Costia",
+      theme: { hue: 295 },
+      paths: [{ path: "fixtures/costia/frontend", role: "frontend" }],
+    });
+
+    const above = resolveProjectByPath(db, "fixtures/costia");
+    expect(above?.project.id).toBe(costia.id);
+    // Flagged, because it is an inference: the directory is still not attached.
+    expect(above?.viaDescendant).toBe(true);
+    // Stored absolute, so compare the tail: what matters is which path answered.
+    expect(above?.path.path.endsWith("fixtures/costia/frontend")).toBe(true);
+
+    // Attaching it makes the answer direct, and the flag goes away.
+    addProjectPath(db, costia.id, { path: "fixtures/costia", role: "superproject" });
+    const attached = resolveProjectByPath(db, "fixtures/costia");
+    expect(attached?.viaDescendant).toBeUndefined();
+    expect(attached?.path.role).toBe("superproject");
+  });
+
+  test("refuse to guess when the descendants belong to different projects", () => {
+    const db = freshDb();
+    createProject(db, { name: "Costia", theme: { hue: 295 }, paths: [{ path: "fixtures/costia" }] });
+    createProject(db, { name: "Aura", theme: { hue: 80 }, paths: [{ path: "fixtures/aura-map" }] });
+
+    // `fixtures` holds both, so naming one of them would be arbitrary.
+    expect(resolveProjectByPath(db, "fixtures")).toBeNull();
   });
 
   test("a relative path is stored resolved, and answers to its absolute form", () => {

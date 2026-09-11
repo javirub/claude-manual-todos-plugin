@@ -125,7 +125,18 @@ export function getProject(db: Sqlite, ref: string | number): Project | null {
  * three rows and one project — and what lets a nested checkout claim a cwd back
  * from its parent.
  */
-export function resolveProjectByPath(db: Sqlite, cwd: string): { project: Project; path: ProjectPath } | null {
+/**
+ * `viaDescendant` means the cwd is *above* the registered path rather than inside
+ * it, so the answer is an inference and the caller should say so — the directory
+ * is not attached yet and `add_project_path` is the fix.
+ */
+export interface ResolvedProjectPath {
+  project: Project;
+  path: ProjectPath;
+  viaDescendant?: boolean;
+}
+
+export function resolveProjectByPath(db: Sqlite, cwd: string): ResolvedProjectPath | null {
   const rows = db
     .prepare("SELECT id, project_id, path, label, role FROM project_paths ORDER BY LENGTH(path) DESC")
     .all<{ id: number; project_id: number; path: string; label: string | null; role: string | null }>();
@@ -138,7 +149,36 @@ export function resolveProjectByPath(db: Sqlite, cwd: string): { project: Projec
       }
     }
   }
-  return null;
+
+  /*
+   * Nothing registered contains the cwd — but something registered may live
+   * *inside* it, and then the session knows perfectly well where it is.
+   *
+   * This is the superproject case: a repository of submodules where only
+   * `<repo>/frontend` was ever attached. Opened at the root, resolution returned
+   * null, so the session hook stayed silent and a whole session went by without
+   * anyone reading a board that had twelve open tasks on it — including the one
+   * that explained the problem being investigated by hand. Silence is the right
+   * answer for a directory nobody has ever mentioned; it is the wrong one for
+   * the parent of a directory that is attached.
+   *
+   * Only when every registered path below belongs to the **same** project: at
+   * `~/Proyectos` every project is below, and picking one would be arbitrary.
+   */
+  const below = rows.filter((row) => isWithin(cwd, row.path));
+  if (!below.length) return null;
+  if (new Set(below.map((row) => row.project_id)).size > 1) return null;
+
+  // `rows` is longest-first, so the last of them is the shallowest — the closest
+  // registered path to the cwd, and the most useful one to name.
+  const row = below[below.length - 1]!;
+  const project = getProject(db, row.project_id);
+  if (!project) return null;
+  return {
+    project,
+    path: { id: row.id, path: row.path, label: row.label, role: row.role },
+    viaDescendant: true,
+  };
 }
 
 export function takenHues(db: Sqlite, exceptProjectId?: number): number[] {
@@ -235,6 +275,26 @@ export function addProjectPath(
                                      role = COALESCE(excluded.role, project_paths.role)`,
   ).run(projectId, resolve(input.path), input.label ?? null, input.role ?? null);
   recordEvent(db, "updated", "project", projectId);
+}
+
+/**
+ * Removes one path from a project. There was no way to do this, so a checkout
+ * root that moved could only ever accumulate: the paths of the old layout stayed
+ * in the table for ever, resolving to nothing and explaining nothing.
+ *
+ * Returns false when that path was not this project's, so a caller can say so
+ * instead of reporting a deletion that did not happen.
+ */
+export function removeProjectPath(db: Sqlite, projectId: number, path: string): boolean {
+  const target = resolve(path);
+  const before = db
+    .prepare("SELECT COUNT(*) AS n FROM project_paths WHERE project_id = ? AND path = ?")
+    .get<{ n: number }>(projectId, target);
+  if (!before?.n) return false;
+
+  db.prepare("DELETE FROM project_paths WHERE project_id = ? AND path = ?").run(projectId, target);
+  recordEvent(db, "updated", "project", projectId);
+  return true;
 }
 
 export function upsertOwner(

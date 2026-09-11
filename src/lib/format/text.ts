@@ -142,12 +142,23 @@ export function projectLine(project: Project): string {
   return bits.join(" ");
 }
 
-export function projectDetailText(project: Project): string {
+/**
+ * `missing` marks paths that are not on disk here. A checkout root that moved
+ * leaves every path behind it dead, and nothing said so: this machine had seven
+ * projects whose paths all pointed at a directory that no longer existed, so the
+ * session hook resolved nothing and stayed silent everywhere. A dead path is not
+ * an error — the same database is read from several machines — but it has to be
+ * visible, or it is discovered by wondering why the board never speaks.
+ */
+export function projectDetailText(project: Project, missing?: (path: string) => boolean): string {
   const lines = [projectLine(project)];
   if (project.summary) lines.push(project.summary);
   if (project.paths.length) {
     lines.push("Paths:");
-    for (const p of project.paths) lines.push(`  ${p.path}${p.role ? `  (${p.role})` : ""}`);
+    for (const p of project.paths) {
+      const gone = missing?.(p.path) ? "  — not on disk here" : "";
+      lines.push(`  ${p.path}${p.role ? `  (${p.role})` : ""}${gone}`);
+    }
   }
   if (project.owners.length) lines.push(`Owners: ${project.owners.map((o) => o.slug).join(", ")}`);
   const t = project.theme;

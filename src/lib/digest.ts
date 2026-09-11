@@ -21,6 +21,8 @@ export interface Digest {
   today: number;
   /** Overdue first, then the soonest date, then whatever was created first. */
   mostUrgent: TaskSummary | null;
+  /** The cwd is above the registered path, not inside it: nobody attached it yet. */
+  viaDescendant: boolean;
 }
 
 export function digestFor(cwd: string, db = connect()): Digest | null {
@@ -33,7 +35,15 @@ export function digestFor(cwd: string, db = connect()): Digest | null {
 
   // listTasks already orders by due date then creation, so the head of the list
   // is the answer — no second sort that could disagree with the board's order.
-  return { project: resolved.project, path: resolved.path, open, overdue, today, mostUrgent: open[0] ?? null };
+  return {
+    project: resolved.project,
+    path: resolved.path,
+    open,
+    overdue,
+    today,
+    mostUrgent: open[0] ?? null,
+    viaDescendant: resolved.viaDescendant ?? false,
+  };
 }
 
 /**
@@ -65,7 +75,12 @@ export function hookLine(digest: Digest, boardUrl: string | null): string {
   const parts = [`${digest.project.name}: ${countsPhrase(digest, true)}.`];
   if (digest.mostUrgent) parts.push(`Most urgent: ${taskLine(digest.mostUrgent)}.`);
   parts.push("Read them with list_tasks before recording anything new;");
-  parts.push(boardUrl ? `the board is up at ${boardUrl}.` : "/todos:tasks opens the board.");
+  parts.push(boardUrl ? `the board is up at ${boardUrl};` : "/todos:tasks opens the board;");
+  // Said out loud because the silence it replaces is what hid the board for a
+  // whole session: the directory is not attached, only something below it is.
+  if (digest.viaDescendant) {
+    parts.push(`this directory is not attached — ${digest.path.path} is, below it. Attach it with add_project_path.`);
+  }
   return parts.join(" ");
 }
 

@@ -1,7 +1,7 @@
 ---
 name: manual-tasks
 description: Record, correct and close the things only the user can do by hand — a form in some console, a secret to seed, a promotion to trigger, a review to answer. Use whenever what you just delivered cannot take effect until someone acts somewhere you have no access, and whenever the world changes under a task already recorded. Task content is written in the user's own language, which the tools report.
-allowed-tools: mcp__plugin_todos_tasks__where_am_i, mcp__plugin_todos_tasks__list_projects, mcp__plugin_todos_tasks__create_project, mcp__plugin_todos_tasks__update_project, mcp__plugin_todos_tasks__add_project_path, mcp__plugin_todos_tasks__link_projects, mcp__plugin_todos_tasks__set_project_theme, mcp__plugin_todos_tasks__list_tasks, mcp__plugin_todos_tasks__get_task, mcp__plugin_todos_tasks__create_task, mcp__plugin_todos_tasks__update_task, mcp__plugin_todos_tasks__add_steps, mcp__plugin_todos_tasks__update_step, mcp__plugin_todos_tasks__complete_steps, mcp__plugin_todos_tasks__reopen_steps, mcp__plugin_todos_tasks__complete_task, mcp__plugin_todos_tasks__delete_step, mcp__plugin_todos_tasks__delete_task, mcp__plugin_todos_tasks__link_tasks, mcp__plugin_todos_tasks__open_board
+allowed-tools: mcp__plugin_todos_tasks__where_am_i, mcp__plugin_todos_tasks__list_projects, mcp__plugin_todos_tasks__create_project, mcp__plugin_todos_tasks__update_project, mcp__plugin_todos_tasks__add_project_path, mcp__plugin_todos_tasks__remove_project_path, mcp__plugin_todos_tasks__link_projects, mcp__plugin_todos_tasks__set_project_theme, mcp__plugin_todos_tasks__list_tasks, mcp__plugin_todos_tasks__get_task, mcp__plugin_todos_tasks__create_task, mcp__plugin_todos_tasks__update_task, mcp__plugin_todos_tasks__add_steps, mcp__plugin_todos_tasks__update_step, mcp__plugin_todos_tasks__complete_steps, mcp__plugin_todos_tasks__reopen_steps, mcp__plugin_todos_tasks__complete_task, mcp__plugin_todos_tasks__delete_step, mcp__plugin_todos_tasks__delete_task, mcp__plugin_todos_tasks__link_tasks, mcp__plugin_todos_tasks__open_board
 ---
 
 # The user's manual tasks
@@ -37,6 +37,13 @@ what is pending, and **which language to write task content in**. A project is
 If the path belongs to no project, decide which of two things it is:
 
 - **Another repository of a project that already exists** → `add_project_path`.
+- **`where_am_i` says the directory is not attached but names a project below it** →
+  `add_project_path` on the directory you are in. It resolved by inference, and the
+  session hook has to keep guessing until someone attaches it.
+- **A path printed as `not on disk here`** → the checkout moved. Attach the new one
+  and drop the old with `remove_project_path`: attaching does not remove, and a
+  project whose paths all point somewhere that no longer exists resolves to nothing,
+  which the hook reports as silence rather than as a problem.
   This is the common case and the one most often got wrong: look at the list
   before creating anything.
 - **A genuinely new project** → `create_project`, and only then invent its

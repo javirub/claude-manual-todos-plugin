@@ -10,6 +10,8 @@
  * The task content they end up writing goes in the user's language, which
  * where_am_i reports. See skills/manual-tasks/SKILL.md.
  */
+import { existsSync } from "node:fs";
+
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod";
@@ -20,6 +22,7 @@ import { LOCALES, LOCALE_LABELS, getLocale, setLocale, type Locale } from "@/lib
 import {
   HueTooCloseError,
   addProjectPath,
+  removeProjectPath,
   createProject,
   getProject,
   linkProjects,
@@ -51,6 +54,13 @@ import { projectDetailText, projectLine, taskDetailText, taskListText } from "@/
 const db = getDb();
 
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }] });
+
+/**
+ * Paths are checked against this machine every time a project is rendered, so a
+ * checkout root that moved shows up the first time anyone looks instead of as
+ * unexplained silence from the session hook.
+ */
+const notOnDisk = (path: string) => !existsSync(path);
 
 /**
  * The single most useful thing to tell an agent that is about to write a task:
@@ -143,8 +153,14 @@ server.registerTool(
     const open = listTasks(db, { projectId: project.id, state: "open" });
     const relations = listProjectRelations(db, project.id);
     const lines = [
-      projectDetailText(project),
-      `\nYou are in ${path.path}${path.role ? ` (${path.role})` : ""}.`,
+      projectDetailText(project, notOnDisk),
+      resolved.viaDescendant
+        // Resolved by inference rather than registration. Said first because it
+        // is fixable in one call, and because until someone fixes it the session
+        // hook has to guess on every start.
+        ? `\n${where} is NOT attached to this project — ${path.path} is, below it. ` +
+          `Attach it with add_project_path so it resolves directly from here.`
+        : `\nYou are in ${path.path}${path.role ? ` (${path.role})` : ""}.`,
       languageLine(),
     ];
     if (relations.length) {
@@ -165,7 +181,7 @@ server.registerTool(
   async ({ includeArchived }) => {
     const projects = listProjects(db, includeArchived ?? false);
     if (!projects.length) return text("There are no projects.");
-    return text(projects.map((p) => projectDetailText(p)).join("\n\n"));
+    return text(projects.map((p) => projectDetailText(p, notOnDisk)).join("\n\n"));
   },
 );
 
@@ -251,7 +267,32 @@ server.registerTool(
   async ({ project, path, role, label }) => {
     const found = requireProject(project, undefined);
     addProjectPath(db, found.id, { path, role, label });
-    return text(projectDetailText(getProject(db, found.id)!));
+    return text(projectDetailText(getProject(db, found.id)!, notOnDisk));
+  },
+);
+
+server.registerTool(
+  "remove_project_path",
+  {
+    title: "Detach a path from a project",
+    description:
+      "Removes one directory from a project. For a path that is no longer where the work is — a checkout " +
+      "root that moved, a repository that was split out. Attaching the new one does not remove the old, " +
+      "and a project whose paths all point somewhere that does not exist resolves to nothing.",
+    inputSchema: z.object({
+      project: z.string(),
+      path: z.string().describe("Absolute, exactly as list_projects prints it."),
+    }),
+  },
+  async ({ project, path }) => {
+    const found = requireProject(project, undefined);
+    if (!removeProjectPath(db, found.id, path)) {
+      return text(
+        `${path} is not one of ${found.name}'s paths. They are:\n` +
+          `${(getProject(db, found.id)?.paths ?? []).map((p) => `  ${p.path}`).join("\n")}`,
+      );
+    }
+    return text(projectDetailText(getProject(db, found.id)!, notOnDisk));
   },
 );
 
