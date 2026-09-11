@@ -102,8 +102,9 @@ describe("resolving a cwd to a project", () => {
     expect(above?.project.id).toBe(costia.id);
     // Flagged, because it is an inference: the directory is still not attached.
     expect(above?.viaDescendant).toBe(true);
-    // Stored absolute, so compare the tail: what matters is which path answered.
-    expect(above?.path.path.endsWith("fixtures/costia/frontend")).toBe(true);
+    // Compared through `resolve`, never by a literal separator: on Windows the
+    // stored path comes back with backslashes and a "/"-spelled tail never matches.
+    expect(above?.path.path).toBe(resolve("fixtures/costia/frontend"));
 
     // Attaching it makes the answer direct, and the flag goes away.
     addProjectPath(db, costia.id, { path: "fixtures/costia", role: "superproject" });
@@ -128,7 +129,9 @@ describe("resolving a cwd to a project", () => {
     // Attaching it to the second did not take it from the first.
     const both = resolveProjectsByPath(db, "fixtures/k3s-cluster");
     expect(both.map((r) => r.project.id).sort()).toEqual([costia.id, aura.id].sort());
-    expect(getProject(db, costia.id)?.paths.some((p) => p.path.endsWith("fixtures/k3s-cluster"))).toBe(true);
+    expect(getProject(db, costia.id)?.paths.some((p) => p.path === resolve("fixtures/k3s-cluster"))).toBe(
+      true,
+    );
 
     // Removing it from one leaves the other's.
     removeProjectPath(db, aura.id, "fixtures/k3s-cluster");
