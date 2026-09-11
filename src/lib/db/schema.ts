@@ -174,3 +174,39 @@ CREATE TABLE settings (
   value TEXT NOT NULL
 );
 `;
+
+export const MIGRATION_3 = `
+-- Migration 3 — a repository can belong to more than one project.
+--
+-- \`path\` was UNIQUE, so a directory had exactly one project and attaching it to
+-- a second one *moved* it: \`ON CONFLICT(path) DO UPDATE SET project_id\` reassigned
+-- the row and said nothing. Whoever registered it last owned it, and the tasks you
+-- were shown depended on that.
+--
+-- That is wrong for the thing it happens to most: shared infrastructure. One
+-- \`k3s-cluster\` repository serves three products; a shared microservice is the
+-- same shape. Standing in it, the honest answer is "these projects", not "the last
+-- one anybody attached".
+--
+-- Uniqueness moves to the pair, so the same path can appear once per project and
+-- attaching is idempotent within a project. SQLite cannot drop a constraint, so
+-- the table is rebuilt.
+
+CREATE TABLE project_paths_new (
+  id         INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  path       TEXT NOT NULL,
+  label      TEXT,
+  role       TEXT,
+  UNIQUE (project_id, path)
+);
+
+INSERT INTO project_paths_new(id, project_id, path, label, role)
+  SELECT id, project_id, path, label, role FROM project_paths;
+
+DROP TABLE project_paths;
+ALTER TABLE project_paths_new RENAME TO project_paths;
+
+CREATE INDEX idx_project_paths_project ON project_paths(project_id);
+CREATE INDEX idx_project_paths_path ON project_paths(path);
+`;

@@ -3,9 +3,9 @@ import { dirname } from "node:path";
 
 import { openSqlite, type Sqlite } from "./driver";
 import { databasePath } from "./paths";
-import { MIGRATION_1, MIGRATION_2 } from "./schema";
+import { MIGRATION_1, MIGRATION_2, MIGRATION_3 } from "./schema";
 
-const MIGRATIONS: readonly string[] = [MIGRATION_1, MIGRATION_2];
+const MIGRATIONS: readonly string[] = [MIGRATION_1, MIGRATION_2, MIGRATION_3];
 
 /** What `PRAGMA user_version` should read once a database is up to date. */
 export const LATEST_VERSION = MIGRATIONS.length;

@@ -8,6 +8,9 @@ import {
   addProjectPath,
   createProject,
   listProjects,
+  getProject,
+  removeProjectPath,
+  resolveProjectsByPath,
   resolveProjectByPath,
   setProjectTheme,
 } from "@/lib/db/projects";
@@ -107,6 +110,36 @@ describe("resolving a cwd to a project", () => {
     const attached = resolveProjectByPath(db, "fixtures/costia");
     expect(attached?.viaDescendant).toBeUndefined();
     expect(attached?.path.role).toBe("superproject");
+  });
+
+  /*
+   * Shared infrastructure: one k3s-cluster repository behind three products. The
+   * path used to be UNIQUE, so attaching it to a second project moved it and the
+   * board you were shown depended on who registered it last.
+   */
+  test("a repository can belong to several projects at once", () => {
+    const db = freshDb();
+    const costia = createProject(db, { name: "Costia", theme: { hue: 295 }, paths: [] });
+    const aura = createProject(db, { name: "Aura", theme: { hue: 80 }, paths: [] });
+
+    addProjectPath(db, costia.id, { path: "fixtures/k3s-cluster", role: "clúster" });
+    addProjectPath(db, aura.id, { path: "fixtures/k3s-cluster", role: "clúster" });
+
+    // Attaching it to the second did not take it from the first.
+    const both = resolveProjectsByPath(db, "fixtures/k3s-cluster");
+    expect(both.map((r) => r.project.id).sort()).toEqual([costia.id, aura.id].sort());
+    expect(getProject(db, costia.id)?.paths.some((p) => p.path.endsWith("fixtures/k3s-cluster"))).toBe(true);
+
+    // Removing it from one leaves the other's.
+    removeProjectPath(db, aura.id, "fixtures/k3s-cluster");
+    expect(resolveProjectsByPath(db, "fixtures/k3s-cluster").map((r) => r.project.id)).toEqual([costia.id]);
+  });
+
+  test("the most specific project still answers when only one owns the path", () => {
+    const db = freshDb();
+    const costia = seedCostia(db);
+    expect(resolveProjectsByPath(db, "fixtures/costia/backend/src")).toHaveLength(1);
+    expect(resolveProjectByPath(db, "fixtures/costia/backend/src")?.project.id).toBe(costia.id);
   });
 
   test("refuse to guess when the descendants belong to different projects", () => {

@@ -136,6 +136,58 @@ export interface ResolvedProjectPath {
   viaDescendant?: boolean;
 }
 
+/**
+ * Every project a directory belongs to, most specific first.
+ *
+ * Plural because a repository can serve several products — one `k3s-cluster`
+ * behind three of them, a shared microservice, a design system. Asking for "the"
+ * project of a path is the question that cannot always be answered, and answering
+ * it anyway is how the board shows you one product's tasks while you work on
+ * another's.
+ *
+ * Direct matches come first, ordered by how specific they are. The inferred ones
+ * — a cwd that merely sits above a registered path — come last and are flagged.
+ */
+export function resolveProjectsByPath(db: Sqlite, cwd: string): ResolvedProjectPath[] {
+  const rows = db
+    .prepare("SELECT id, project_id, path, label, role FROM project_paths ORDER BY LENGTH(path) DESC")
+    .all<{ id: number; project_id: number; path: string; label: string | null; role: string | null }>();
+
+  const found: ResolvedProjectPath[] = [];
+  const seen = new Set<number>();
+  for (const row of rows) {
+    if (!isWithin(row.path, cwd) || seen.has(row.project_id)) continue;
+    const project = getProject(db, row.project_id);
+    if (!project) continue;
+    seen.add(row.project_id);
+    found.push({ project, path: { id: row.id, path: row.path, label: row.label, role: row.role } });
+  }
+  if (found.length) return found;
+
+  // See the note below: nothing contains the cwd, so look inside it instead.
+  const below = rows.filter((row) => isWithin(cwd, row.path));
+  if (!below.length) return [];
+  if (new Set(below.map((row) => row.project_id)).size > 1) return [];
+  const row = below[below.length - 1]!;
+  const project = getProject(db, row.project_id);
+  if (!project) return [];
+  return [
+    {
+      project,
+      path: { id: row.id, path: row.path, label: row.label, role: row.role },
+      viaDescendant: true,
+    },
+  ];
+}
+
+/**
+ * The most specific project a directory belongs to, or null.
+ *
+ * For the callers that genuinely want one answer — the status line has one line.
+ * Anything that records or reports should use `resolveProjectsByPath` and say
+ * what it found, because "the first of several" is a guess wearing a fact's
+ * clothes.
+ */
 export function resolveProjectByPath(db: Sqlite, cwd: string): ResolvedProjectPath | null {
   const rows = db
     .prepare("SELECT id, project_id, path, label, role FROM project_paths ORDER BY LENGTH(path) DESC")
@@ -269,10 +321,11 @@ export function addProjectPath(
   input: { path: string; label?: string | null; role?: string | null },
 ): void {
   db.prepare(
+    // The conflict target is the pair, so attaching a path that another project
+    // already has adds it here instead of taking it from them.
     `INSERT INTO project_paths(project_id, path, label, role) VALUES (?,?,?,?)
-     ON CONFLICT(path) DO UPDATE SET project_id = excluded.project_id,
-                                     label = COALESCE(excluded.label, project_paths.label),
-                                     role = COALESCE(excluded.role, project_paths.role)`,
+     ON CONFLICT(project_id, path) DO UPDATE SET label = COALESCE(excluded.label, project_paths.label),
+                                                 role = COALESCE(excluded.role, project_paths.role)`,
   ).run(projectId, resolve(input.path), input.label ?? null, input.role ?? null);
   recordEvent(db, "updated", "project", projectId);
 }

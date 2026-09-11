@@ -150,7 +150,11 @@ export function listTasks(db: Sqlite, filter: TaskFilter = {}): TaskSummary[] {
   const order =
     filter.state === "done"
       ? "ORDER BY completed_at DESC, t.updated_at DESC"
-      : "ORDER BY (t.due_at IS NULL), t.due_at ASC, t.created_at DESC";
+      // `t.id DESC` is the tiebreak, not decoration: `created_at` has second
+      // resolution, so two tasks recorded in the same tick came back in an
+      // undefined order and the suite failed roughly one run in three. Higher
+      // ids are newer, so it means exactly what "by recency" already meant.
+      : "ORDER BY (t.due_at IS NULL), t.due_at ASC, t.created_at DESC, t.id DESC";
 
   const sql = `${TASK_SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ${order}`;
   return db.prepare(sql).all<TaskRow>(...values).map((row) => toSummary(db, row));

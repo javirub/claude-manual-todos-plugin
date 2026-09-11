@@ -29,6 +29,7 @@ import {
   listProjectRelations,
   listProjects,
   resolveProjectByPath,
+  resolveProjectsByPath,
   setProjectTheme,
   suggestFreeHue,
   updateProject,
@@ -79,10 +80,21 @@ function requireProject(ref: string | undefined, cwd: string | undefined): Proje
     const known = listProjects(db).map((p) => p.slug).join(", ") || "none";
     throw new Error(`No project "${ref}". The ones that exist: ${known}.`);
   }
-  const resolved = resolveProjectByPath(db, cwd ?? process.cwd());
-  if (resolved) return resolved.project;
+  const here = cwd ?? process.cwd();
+  const resolved = resolveProjectsByPath(db, here);
+  if (resolved.length === 1) return resolved[0]!.project;
+  if (resolved.length > 1) {
+    // A shared repository. Picking one would decide, silently, which board the
+    // task lands on — and the wrong one is invisible until someone goes looking
+    // for a task that is not there.
+    throw new Error(
+      `${here} belongs to ${resolved.length} projects: ` +
+        `${resolved.map((r) => r.project.slug).join(", ")}. ` +
+        `Name the one you mean with \`project\`, and use \`alsoProjects\` if the task really belongs to more than one.`,
+    );
+  }
   throw new Error(
-    `The path ${cwd ?? process.cwd()} belongs to no project. ` +
+    `The path ${here} belongs to no project. ` +
       `Call where_am_i to see the options, then either create the project with create_project ` +
       `or attach the path to an existing one with add_project_path before recording anything.`,
   );
@@ -134,7 +146,20 @@ server.registerTool(
   },
   async ({ cwd }) => {
     const where = cwd ?? process.cwd();
-    const resolved = resolveProjectByPath(db, where);
+    const all = resolveProjectsByPath(db, where);
+    if (all.length > 1) {
+      return text(
+        `${where} belongs to ${all.length} projects — it is shared, so there is no single answer.\n` +
+          `${languageLine()}\n\n` +
+          all
+            .map((r) => `${projectDetailText(r.project, notOnDisk)}\n  here as: ${r.path.path}${r.path.role ? ` (${r.path.role})` : ""}\n` +
+              `Open (${listTasks(db, { projectId: r.project.id, state: "open" }).length}):\n` +
+              `${taskListText(listTasks(db, { projectId: r.project.id, state: "open" }))}`)
+            .join("\n\n") +
+          `\n\nRecording anything here needs \`project\` naming which one, and \`alsoProjects\` when it belongs to several.`,
+      );
+    }
+    const resolved = all[0] ?? null;
     if (!resolved) {
       const projects = listProjects(db);
       return text(
