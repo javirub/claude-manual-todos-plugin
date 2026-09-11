@@ -34,7 +34,7 @@ jobs:
           bun-version: latest
 
       # Only for the portability check below; nothing else runs on Node.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
 
