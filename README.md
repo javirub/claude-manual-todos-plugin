@@ -113,12 +113,32 @@ A slash command is a prompt: it costs a model turn, however short. These do not.
 }
 ```
 
-Already have a status line? Append the segment to yours instead — it prints
-nothing but its own text, and nothing at all when there is nothing pending:
+If it prints nothing where you expect something, it is almost certainly Bun:
+Claude Code renders the status line from its own environment rather than your
+login shell, so a Bun installed through **mise, asdf, fnm or Volta** resolves for
+you and not for it — the same thing that bites the MCP server. Write the path
+`which bun` gives you instead of the bare name.
+
+Already have a status line? Append the segment to yours rather than replacing it.
+Three things make that painless:
+
+- it reads **no stdin**, so the JSON your own script has already swallowed with
+  `cat` is not its concern — it takes the project from the directory it runs in;
+- it prints its own text and nothing else, and **nothing at all** when the
+  directory belongs to no project or nothing is pending;
+- it never throws and always exits `0`. It cannot be the reason your bar breaks.
+
+At the end of your script, then — with a separating space, because the segment
+arrives as bare text, and `$HOME` rather than `~`, which does not expand inside
+quotes:
 
 ```sh
-your-status-line; bun .../bin/todos.ts statusline
+todos=$(/path/to/bun "$HOME/.claude/plugins/marketplaces/claude-manual-todos/bin/todos.ts" statusline)
+if [ -n "$todos" ]; then printf ' %s' "$todos"; fi
 ```
+
+If your script builds coloured segments, give this one a background of its own
+instead: `◆ Costia training · 5 open` is written plain, ready to be wrapped.
 
 Turn it off for one project with `todos statusline off`, or everywhere with
 `todos statusline off --global`. There is a toggle at the foot of the board's
@@ -275,7 +295,7 @@ whichever part is not.
 | **The board takes twenty seconds the first time** | A fresh checkout has no build, so it falls back to `next dev` and compiles on demand. Run `bun run build` once in the plugin directory and it starts instantly from then on. |
 | **The port is taken** | `CLAUDE_TASKS_PORT=4488`, in the environment Claude Code sees. |
 | **`bun install` runs on first use** | Expected. The marketplace clones the repository without dependencies, so the MCP server installs them for itself (`mcp/preflight.ts`). It only happens once. |
-| **The status bar shows nothing** | It is silent by design when the directory belongs to no project or nothing is pending. `todos statusline status` says which of those it is. |
+| **The status bar shows nothing** | It is silent by design when the directory belongs to no project or nothing is pending. `todos statusline status` says which of those it is — and if it says the segment should show while the bar stays empty, Claude Code cannot resolve `bun`: same shim problem as the row above, fixed the same way. |
 
 ## Development
 
