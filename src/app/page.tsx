@@ -15,14 +15,18 @@ export default async function AllProjectsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = readParams(await searchParams);
-  const { projects, tasks, counts, owners, selected, totals, locale } = loadBoard(params);
+  const { projects, tasks, counts, owners, selected, totals, locale, statusline } = loadBoard(params);
   const t = await getTranslations("list");
   const tRail = await getTranslations("rail");
 
   return (
-    <div className="shell" data-detail={params.task ? "open" : "closed"}>
+    <div
+      className="shell"
+      data-detail={params.task ? "open" : "closed"}
+      data-rail={params.rail === "open" ? "open" : undefined}
+    >
       <LiveRefresh />
-      <Rail projects={projects} active={null} params={params} totals={totals} locale={locale} />
+      <Rail projects={projects} active={null} params={params} totals={totals} locale={locale} statusline={statusline} />
       <TaskListPane
         title={tRail("allProjects")}
         lede={projects.length ? t("allProjectsLede") : t("noProjectsYet")}
@@ -35,7 +39,7 @@ export default async function AllProjectsPage({
         selectedSlug={selected?.slug}
       />
       {selected ? (
-        <TaskDetail task={selected} params={params} />
+        <TaskDetail task={selected} params={params} base={"/"} />
       ) : (
         <DetailEmpty open={counts.open} overdue={totals.overdue} />
       )}

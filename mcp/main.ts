@@ -44,6 +44,7 @@ import {
   updateStep,
   updateTask,
 } from "@/lib/db/tasks";
+import { PLUGIN_NAME, PLUGIN_VERSION } from "@/lib/manifest";
 import type { Project } from "@/lib/db/types";
 import { projectDetailText, projectLine, taskDetailText, taskListText } from "@/lib/format/text";
 
@@ -105,7 +106,7 @@ const stepSchema = z.object({
   doneBy: z.enum(["user", "agent"]).optional(),
 });
 
-const server = new McpServer({ name: "claude-manual-todos-plugin", version: "0.1.0" });
+const server = new McpServer({ name: PLUGIN_NAME, version: PLUGIN_VERSION });
 
 /* ------------------------------------------------------------------ context */
 
@@ -579,15 +580,20 @@ server.registerTool(
     title: "Open the board",
     description:
       "Makes sure the board is up and returns the URL, starting it if it was not running. Use it once " +
-      "you have finished recording, and hand the user the link with one sentence on what blocks what.",
+      "you have finished recording, and hand the user the link with one sentence on what blocks what. " +
+      "Pass open:true when the user asked to see the board rather than to be told about it.",
     inputSchema: z.object({
       project: z.string().optional(),
       task: z.string().optional(),
       cwd: z.string().optional(),
+      open: z
+        .boolean()
+        .optional()
+        .describe("Also bring the browser up on it. Off by default: recording a task should not steal focus."),
     }),
   },
-  async ({ project, task, cwd }) => {
-    const { ensureUp } = await import("../bin/tasks");
+  async ({ project, task, cwd, open }) => {
+    const { ensureUp } = await import("../bin/todos");
     const { url, started } = await ensureUp();
     let target = url;
     if (task) target = `${url}/t/${task}`;
@@ -595,7 +601,13 @@ server.registerTool(
       const scoped = project || cwd ? requireProject(project, cwd) : null;
       if (scoped) target = `${url}/p/${scoped.slug}`;
     }
-    return text(`${started ? "Started" : "Already up"}: ${target}`);
+    if (open) {
+      const { spawn } = await import("node:child_process");
+      const { openerCommand } = await import("@/lib/runtime");
+      const opener = openerCommand(target);
+      spawn(opener.command, opener.args, { detached: true, stdio: "ignore" }).unref();
+    }
+    return text(`${started ? "Started" : "Already up"}${open ? " and opened" : ""}: ${target}`);
   },
 );
 
@@ -618,4 +630,4 @@ server.registerResource(
 );
 
 void serveStdio(() => server);
-console.error("claude-manual-todos MCP server on stdio");
+console.error(`${PLUGIN_NAME} MCP server ${PLUGIN_VERSION} on stdio`);

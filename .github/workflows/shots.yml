@@ -1,0 +1,32 @@
+name: Screenshots
+
+# Not part of CI: it needs a browser, a build and a minute, and the pictures
+# only change when the board does. Run it from the Actions tab after a change to
+# the interface, download the artifact, and commit what it produced.
+on:
+  workflow_dispatch:
+
+jobs:
+  shots:
+    name: Regenerate docs/media
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # The runner image ships Chrome; playwright-core drives it rather than
+      # downloading a second browser.
+      - name: Capture
+        run: bun run shots
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-media
+          path: docs/media/

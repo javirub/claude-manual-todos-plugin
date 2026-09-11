@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { getLocale, type Locale } from "@/lib/db/settings";
+import { getLocale, statuslineEnabledFor, type Locale } from "@/lib/db/settings";
 import { listOwners, listProjects } from "@/lib/db/projects";
 import { getTask, listTasks } from "@/lib/db/tasks";
 import type { Owner, Project, Task, TaskState, TaskSummary } from "@/lib/db/types";
@@ -16,6 +16,8 @@ export interface BoardData {
   /** Distinct across every project — a transversal task is one task, not two. */
   totals: { open: number; overdue: number };
   locale: Locale;
+  /** Whether the active project shows in the status bar; `null` with no active project. */
+  statusline: boolean | null;
 }
 
 export function loadBoard(params: BoardParams, activeSlug?: string): BoardData {
@@ -59,5 +61,15 @@ export function loadBoard(params: BoardParams, activeSlug?: string): BoardData {
     overdue: allOpen.filter((t) => t.dueAt !== null && t.dueAt < now).length,
   };
 
-  return { projects, active, tasks, counts, owners, selected, totals, locale: getLocale(db) };
+  return {
+    projects,
+    active,
+    tasks,
+    counts,
+    owners,
+    selected,
+    totals,
+    locale: getLocale(db),
+    statusline: active ? statuslineEnabledFor(db, active.slug) : null,
+  };
 }

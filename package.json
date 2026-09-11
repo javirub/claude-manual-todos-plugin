@@ -1,14 +1,19 @@
 {
-  "name": "claude-manual-todos-plugin",
-  "version": "0.1.0",
+  "name": "todos",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "todos": "bin/todos.ts"
+  },
   "scripts": {
     "dev": "bun --bun next dev -H 127.0.0.1",
     "build": "bun --bun next build",
     "start": "bun --bun next start -H 127.0.0.1",
     "mcp": "bun mcp/server.ts",
-    "tasks": "bun bin/tasks.ts",
+    "todos": "bun bin/todos.ts",
+    "shots": "bun scripts/shots.ts",
+    "seed:demo": "bun scripts/seed-demo.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint:messages": "eloqnt lint"
@@ -27,6 +32,7 @@
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "playwright-core": "^1.50.0",
     "typescript": "^7.0.2"
   },
   "engines": {

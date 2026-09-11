@@ -9,7 +9,7 @@ import { useDueLabel } from "./useDueLabel";
 
 import { StepRow } from "./StepRow";
 
-export function TaskDetail({ task, params }: { task: Task; params: BoardParams }) {
+export function TaskDetail({ task, params, base }: { task: Task; params: BoardParams; base: string }) {
   const t = useTranslations("detail");
   const label = useDueLabel();
 
@@ -27,6 +27,11 @@ export function TaskDetail({ task, params }: { task: Task; params: BoardParams }
       <div className="pane-scroll">
       <div className="detail-wrap">
         <header className="detail-head">
+          {/* Below 1180px the list pane is hidden to make room for this one, so
+              this is the only way back that is not the browser's own button. */}
+          <Link className="back-link" href={boardHref(base, params, { task: undefined })}>
+            ‹ {t("backToList")}
+          </Link>
           <div className="detail-facts">
             {task.projects.map((project) => (
               <Link

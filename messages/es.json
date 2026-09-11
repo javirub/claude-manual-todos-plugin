@@ -8,7 +8,8 @@
     "projects": "Proyectos",
     "repositories": "Repositorios",
     "allProjects": "Todos los proyectos",
-    "overdueTitle": "{count, plural, one {# vencida} other {# vencidas}}"
+    "overdueTitle": "{count, plural, one {# vencida} other {# vencidas}}",
+    "close": "Cerrar"
   },
   "list": {
     "allProjectsLede": "Cada tarea lleva el color de su proyecto.",
@@ -24,7 +25,8 @@
     "acrossProjects": "transversal",
     "emptyFiltered": "Ninguna tarea encaja con estos filtros.",
     "emptyDone": "Todavía no has completado ninguna.",
-    "emptyOpen": "No queda nada pendiente aquí."
+    "emptyOpen": "No queda nada pendiente aquí.",
+    "showProjects": "Proyectos"
   },
   "bucket": {
     "overdue": "Vencidas",
@@ -60,7 +62,8 @@
     "countOverdue": "{count, plural, one {Hay # pendiente} other {Hay # pendientes}}, {overdue} de ellas vencidas.",
     "blocks": "bloquea a",
     "blockedBy": "bloqueada por",
-    "relates": "relacionada"
+    "relates": "relacionada",
+    "backToList": "Tareas"
   },
   "step": {
     "why": "por qué",
@@ -75,5 +78,11 @@
     "title": "Eso no existe",
     "body": "La tarea o el proyecto que buscas no está en la base de datos.",
     "action": "Ver todo"
+  },
+  "statusline": {
+    "label": "Barra de estado",
+    "on": "Se muestra",
+    "off": "Oculto",
+    "hint": "Si este proyecto aparece en la barra de estado de Claude Code"
   }
 }

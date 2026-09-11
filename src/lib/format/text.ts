@@ -9,7 +9,8 @@ import { BUCKET_ORDER, bucketOf, daysBetween, type DueBucket } from "./dates";
  *
  * The labels here are English, unlike the ones in ./dates, which are what the
  * board shows the user. Same data, two audiences: the agent reads the scaffolding
- * of this file, the user reads the interface. Task content stays Spanish in both.
+ * of this file, the user reads the interface. Task content is whatever language
+ * `set_locale` says, and is passed through untouched by both.
  */
 
 const EN_DATE = new Intl.DateTimeFormat("en", { day: "numeric", month: "short" });

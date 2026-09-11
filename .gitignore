@@ -5,3 +5,8 @@ next-env.d.ts
 .DS_Store
 /.idea/
 *.iml
+
+# The framed PNGs are committed — the README points at them. The bare captures
+# are not: they are the same pixels without the frame, kept so that whoever
+# redesigns the frame does not have to re-run the app to get them back.
+/docs/media/raw/

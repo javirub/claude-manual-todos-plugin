@@ -1,6 +1,7 @@
 ---
 name: manual-tasks
-description: Record what the user has to do by hand — a form in some console, a secret to seed, a promotion to trigger, a review to answer — in the manual-tasks board, instead of burying it in the last message of a session or in a NEXT_STEPS.md. Use it whenever the work you deliver cannot take effect until someone acts somewhere you have no access to, and also to close or correct tasks already recorded when the world changes. Task content is written in the user's own language, which the tools report.
+description: Record, correct and close the things only the user can do by hand — a form in some console, a secret to seed, a promotion to trigger, a review to answer. Use whenever what you just delivered cannot take effect until someone acts somewhere you have no access, and whenever the world changes under a task already recorded. Task content is written in the user's own language, which the tools report.
+allowed-tools: mcp__plugin_todos_tasks__where_am_i, mcp__plugin_todos_tasks__list_projects, mcp__plugin_todos_tasks__create_project, mcp__plugin_todos_tasks__update_project, mcp__plugin_todos_tasks__add_project_path, mcp__plugin_todos_tasks__link_projects, mcp__plugin_todos_tasks__set_project_theme, mcp__plugin_todos_tasks__list_tasks, mcp__plugin_todos_tasks__get_task, mcp__plugin_todos_tasks__create_task, mcp__plugin_todos_tasks__update_task, mcp__plugin_todos_tasks__add_steps, mcp__plugin_todos_tasks__update_step, mcp__plugin_todos_tasks__complete_steps, mcp__plugin_todos_tasks__reopen_steps, mcp__plugin_todos_tasks__complete_task, mcp__plugin_todos_tasks__delete_step, mcp__plugin_todos_tasks__delete_task, mcp__plugin_todos_tasks__link_tasks, mcp__plugin_todos_tasks__open_board
 ---
 
 # The user's manual tasks
@@ -65,8 +66,14 @@ three times across three sessions.
 ### 4. Show it to them
 
 If you touched anything, call `open_board` and hand over the link with **one
-sentence** saying what blocks what. If you touched nothing, say so in one line
-and open nothing.
+sentence** saying what blocks what:
+
+> Recorded 3 steps in *Publish Costia Training on the App Store* — the licence
+> agreement blocks the build upload, so start there:
+> http://127.0.0.1:4477/t/publish-costia-training
+
+If you touched nothing, say so in one line and open nothing. "Nothing to record,
+the two steps for this are already on the board" is a complete answer.
 
 ## How to write a step
 
@@ -93,6 +100,54 @@ A step is one action someone can finish in a sitting, in the imperative.
 - **What you already resolved is marked, not omitted.** `done: true, doneBy:
   "agent"`. The board labels it as resolved in code, and seeing what is already
   closed is half the context for why the rest is still open.
+
+## One worked example
+
+Rules are followed unevenly and examples are copied, so this is what a good
+`create_task` looks like. Two phases because the second genuinely cannot start
+until the first is done, one step already closed because it was resolved in code,
+exact values rather than descriptions of them, and `why` only on the step whose
+consequence is not obvious.
+
+```js
+create_task({
+  project: "costia-training",
+  title: "Publish Costia Training on the App Store",
+  summary: "The build is uploaded and passes review checks; what is left is all in App Store Connect.",
+  dueAt: "2026-09-30",
+  phases: [
+    {
+      name: "Agreements",
+      steps: [
+        {
+          title: "Accept the paid applications agreement",
+          body: "App Store Connect → Business → Agreements, Tax and Banking.",
+          why: "Until it is signed the app can be reviewed but not released, and the failure shows up as a greyed-out button with no explanation.",
+          linkUrl: "https://appstoreconnect.apple.com/business",
+          linkLabel: "Agreements",
+          owner: "apple",
+        },
+      ],
+    },
+    {
+      name: "Listing",
+      steps: [
+        { title: "Paste the shared secret into the backend secret store", value: "APPLE_SHARED_SECRET", owner: "infisical" },
+        { title: "Set the bundle identifier on the pre-production target", value: "ai.costia.training.pre", done: true, doneBy: "agent" },
+      ],
+    },
+  ],
+})
+```
+
+What makes it usable, in order of how often it is got wrong:
+
+1. `value` holds the string they will paste. `"ai.costia.training.pre"`, not
+   "the pre-production identifier".
+2. The UI path is in the product's own words, even where they differ from the
+   task's language. Navigating is most of the work.
+3. `why` appears once, on the step where skipping it fails invisibly.
+4. The step already resolved is **recorded as done**, not left out.
 
 ## Dates
 
@@ -146,6 +201,15 @@ it is their preference, and it changes the board underneath them.
 
 Code, commits, identifiers and repository documentation stay in **English**
 whatever that setting says.
+
+## The four ways this goes wrong
+
+| | |
+|---|---|
+| **A duplicate** | Three sessions, three copies of the same task. `list_tasks` first, every time. It is step 2 and it is not optional. |
+| **A project that is really a repository** | `costia/backend` is not a project. Look at `list_projects` before `create_project`; `add_project_path` is almost always the right call. |
+| **An invented deadline** | A `dueAt` nobody asked for empties the "Overdue" bucket of meaning, and that bucket is the first thing the user looks at. |
+| **A task that should have been code** | If you could have automated it, automate it. A manual task that never needed to exist is noise in a list the user has to be able to trust. |
 
 ## Keeping it true
 

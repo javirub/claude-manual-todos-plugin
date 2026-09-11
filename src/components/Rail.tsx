@@ -6,6 +6,7 @@ import type { Project } from "@/lib/db/types";
 import { boardHref, type BoardParams } from "@/lib/url";
 
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { StatuslineToggle } from "./StatuslineToggle";
 
 /**
  * A project's dot always carries that project's own hue, even while the
@@ -22,19 +23,28 @@ export function Rail({
   params,
   totals,
   locale,
+  statusline,
 }: {
   projects: Project[];
   active: Project | null;
   params: BoardParams;
   totals: { open: number; overdue: number };
   locale: Locale;
+  statusline: boolean | null;
 }) {
   const t = useTranslations("rail");
   const tApp = useTranslations("app");
   return (
     <aside className="pane rail">
       <div className="pane-head">
-        <div className="wordmark">{tApp("name")}</div>
+        {/* Only reachable below 760px, where the rail covers the screen. */}
+        <Link className="rail-toggle" href={boardHref(active ? `/p/${active.slug}` : "/", params, { rail: undefined })}>
+          ‹ {t("close")}
+        </Link>
+        <div className="wordmark">
+          <span>{tApp("name")}</span>
+          {active ? <small>{active.slug}</small> : null}
+        </div>
       </div>
 
       <div className="pane-scroll">
@@ -89,6 +99,9 @@ export function Rail({
       </div>
 
       <div className="rail-foot">
+        {active && statusline !== null ? (
+          <StatuslineToggle slug={active.slug} enabled={statusline} />
+        ) : null}
         <LanguageSwitcher current={locale} />
       </div>
     </aside>

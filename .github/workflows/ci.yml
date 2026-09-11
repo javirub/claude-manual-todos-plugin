@@ -58,10 +58,33 @@ jobs:
       - name: Build
         run: bun run build
 
+      # The README's pictures are committed, and a README pointing at a file
+      # that no run produces is worse than one with no pictures at all.
+      - name: The README's pictures exist
+        shell: bash
+        run: |
+          missing=0
+          for shot in overview steps identity blocked; do
+            if [ ! -s "docs/media/$shot.png" ]; then
+              echo "docs/media/$shot.png is missing or empty. Run: bun run shots"
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Board starts, answers and stops
         # Exercises the spawn, pidfile and shutdown path, which is where the
         # differences between platforms actually bite.
         run: |
-          bun bin/tasks.ts serve
-          bun bin/tasks.ts status
-          bun bin/tasks.ts stop
+          bun bin/todos.ts serve
+          bun bin/todos.ts status
+          bun bin/todos.ts stop
+
+      - name: The Bun launcher finds Bun without a shell profile
+        # The failure this exists for is invisible: an MCP server that dies with
+        # CONNECTION_CLOSED and nothing in any log. Unix only; on Windows the
+        # remedy is an absolute path in .mcp.json.
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          env -i HOME="$HOME" PATH=/usr/bin:/bin bash bin/mcp.sh < /dev/null

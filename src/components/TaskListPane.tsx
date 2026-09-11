@@ -131,6 +131,11 @@ export function TaskListPane({
   return (
     <section className="pane list-pane">
       <div className="pane-head">
+        {/* Only visible below 760px, where the rail is off screen and the
+            projects would otherwise be unreachable. */}
+        <Link className="rail-toggle" href={boardHref(base, params, { rail: "open" })}>
+          ‹ {t("showProjects")}
+        </Link>
         <h1 className="list-title">{title}</h1>
         {lede ? <p className="list-lede">{lede}</p> : null}
 

@@ -8,7 +8,8 @@
     "projects": "Projects",
     "repositories": "Repositories",
     "allProjects": "All projects",
-    "overdueTitle": "{count, plural, one {# overdue} other {# overdue}}"
+    "overdueTitle": "{count, plural, one {# overdue} other {# overdue}}",
+    "close": "Close"
   },
   "list": {
     "allProjectsLede": "Every task carries its project's colour.",
@@ -24,7 +25,8 @@
     "acrossProjects": "across projects",
     "emptyFiltered": "No task matches these filters.",
     "emptyDone": "You haven't completed any yet.",
-    "emptyOpen": "Nothing left to do here."
+    "emptyOpen": "Nothing left to do here.",
+    "showProjects": "Projects"
   },
   "bucket": {
     "overdue": "Overdue",
@@ -60,7 +62,8 @@
     "countOverdue": "{count, plural, one {# task pending} other {# tasks pending}}, {overdue} of them overdue.",
     "blocks": "blocks",
     "blockedBy": "blocked by",
-    "relates": "related"
+    "relates": "related",
+    "backToList": "Tasks"
   },
   "step": {
     "why": "why",
@@ -75,5 +78,11 @@
     "title": "That does not exist",
     "body": "The task or project you are looking for is not in the database.",
     "action": "See everything"
+  },
+  "statusline": {
+    "label": "Status bar",
+    "on": "Showing",
+    "off": "Hidden",
+    "hint": "Whether this project appears in the Claude Code status line"
   }
 }

@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "tasks": {
+      "type": "stdio",
       "command": "bun",
       "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.ts"]
     }

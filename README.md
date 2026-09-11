@@ -1,34 +1,146 @@
-# claude-manual-todos-plugin
+<div align="center">
+
+# Manual todos
+
+**The things only you can do, in one place, ordered by date and separated by project.**
 
 [![CI](https://github.com/javirub/claude-manual-todos-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/javirub/claude-manual-todos-plugin/actions/workflows/ci.yml)
+[![MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8b5cf6.svg)](https://docs.claude.com/en/docs/claude-code/plugins)
 
-The things only you can do, in one place, ordered by date and separated by project.
+![The board across every project](docs/media/overview.png)
+
+</div>
 
 When Claude finishes a piece of work there is almost always something no
 automation can reach: a form in App Store Connect, a secret to seed, a promotion
-to trigger, a review to answer. This is a SQLite database for exactly that, an
-MCP server so Claude can write to it from any repository, and a Next.js board to
-work through it and tick things off.
+to trigger, a review to answer. Today that lands in the last message of a session
+and is gone by the next one.
 
-## Layout
+This is a SQLite database for exactly that, an MCP server so Claude can write to
+it from any repository, and a local board to work through it and tick things off.
+Nothing leaves your machine.
+
+## Install
 
 ```
-.claude-plugin/   plugin manifest and marketplace entry
-.mcp.json         declares the "tasks" MCP server
-messages/         en.json and es.json — the board's own words, in ICU
-skills/           when to record a task, and how to write a step
-commands/         /tasks and /pendings
-hooks/            one line at session start with what is pending here
-mcp/server.ts     launcher: checks dependencies, then hands over to main.ts
-mcp/main.ts       21 MCP tools over the database
-bin/tasks.ts      status | serve | stop | url | open
-src/lib/db/       schema, migrations and queries — shared by the MCP and the app
-src/lib/theme/    each project's palette, derived in OKLCH
-src/app/          the board
-scripts/          MCP smoke driver, and the Node-side database check
-renovate.json     dependency updates, via the Renovate GitHub App
-.github/          CI on Linux, macOS and Windows
+/plugin marketplace add javirub/claude-manual-todos-plugin
+/plugin install todos@claude-manual-todos
 ```
+
+Bun ≥ 1.2 on `PATH` is the only requirement. It installs at user level, so the
+tools are there in every repository rather than only in this one.
+
+Then do nothing. Claude records what is left for you when it finishes something,
+and hands you the link.
+
+## What it looks like
+
+<table>
+<tr>
+<td width="50%">
+
+![Exact values, with the console they go into](docs/media/steps.png)
+
+**Exact values, not descriptions of them.** The string you are about to paste,
+with a copy button, the reason it matters, and a link to the console rather than
+to the documentation.
+
+</td>
+<td width="50%">
+
+![Every project looks like itself](docs/media/identity.png)
+
+**Every project looks like itself.** One palette per project, derived in OKLCH
+from six numbers, with the contrast guaranteed by construction rather than by
+taste.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+![What is waiting on what](docs/media/blocked.png)
+
+**And what is waiting on what.** Tasks link across projects, so the order to do
+them in is visible instead of remembered. What Claude already fixed in code stays
+on the list, marked.
+
+</td>
+<td width="50%">
+
+<br>
+
+```
+◆ Costia · 3 open · 1 overdue
+```
+
+**Without opening anything.** A status-bar segment, a one-line summary at the
+start of every session, and a CLI — none of which spend a token. See
+[Seeing it for free](#seeing-it-for-free).
+
+</td>
+</tr>
+</table>
+
+## Using it
+
+In a session:
+
+| | |
+|---|---|
+| `/todos:tasks` | Opens the board on this project and says what is most urgent. |
+| `/todos:pendings` | Lists what is pending in the chat, without a browser. |
+| `!todos` | The same thing with **no model turn at all** — see below. |
+
+Claude also reaches for this on its own, through the `manual-tasks` skill,
+whenever what it just delivered cannot take effect until you act somewhere it
+has no access.
+
+### Seeing it for free
+
+A slash command is a prompt: it costs a model turn, however short. These do not.
+
+**The status bar.** One segment, rendered by Claude Code outside the model:
+
+```jsonc
+// ~/.claude/settings.json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bun ~/.claude/plugins/marketplaces/claude-manual-todos/bin/todos.ts statusline"
+  }
+}
+```
+
+Already have a status line? Append the segment to yours instead — it prints
+nothing but its own text, and nothing at all when there is nothing pending:
+
+```sh
+your-status-line; bun .../bin/todos.ts statusline
+```
+
+Turn it off for one project with `todos statusline off`, or everywhere with
+`todos statusline off --global`. There is a toggle at the foot of the board's
+project rail that writes the same setting.
+
+**The terminal.** `bun run todos setup` links the CLI into `~/.local/bin`:
+
+```sh
+todos                # open the board on this project and print what is pending
+todos pending        # the list, no browser
+todos doctor         # everything that has to be true for this to work
+todos statusline on|off [--global]
+todos serve | stop | status | url | open [path]
+```
+
+Inside a Claude Code session, type `!todos pending`. The `!` prefix runs it
+locally: the output lands in the conversation without any inference happening.
+
+**The session hook.** One line when a session starts in a project that has
+something waiting, and silence otherwise. `CLAUDE_TODOS_QUIET=1` turns it off.
+
+## How it works
 
 **The MCP writes to SQLite directly and never calls the board.** Recording a task
 must not fail because a web server is down; bringing the interface up is only for
@@ -44,61 +156,10 @@ nobody, and it holds the exact values and console links for your pending work �
 on a shared network the default of binding every interface would hand all of that
 to the room, editable.
 
-## Requirements
+<details>
+<summary><b>The model</b> — projects, tasks, steps, and why a task's state cannot lie</summary>
 
-| | |
-|---|---|
-| **Bun** | ≥ 1.2, on `PATH`. Developed on 1.4. It is the only hard requirement: the MCP server, the CLI, the session hook and the Next.js board all run on it. |
-| **Operating system** | Linux, macOS and Windows. CI runs the whole suite on all three, including starting and stopping the board, because that is where they differ. |
-| **Node.js** | Not needed to use the plugin. Only `scripts/db-portability.mjs` runs on it, and that wants ≥ 22.5 for `node:sqlite`. |
-| **Network** | Once, at build time: `next/font` fetches the four typefaces and self-hosts them. Nothing is fetched at runtime — the board works offline, which matters when the reason you are looking at it is that something else is broken. |
-
-The plugin is **not runnable on Node** as it stands: the source imports without
-file extensions and leans on the `@/` path alias, neither of which Node resolves.
-That is a deliberate limit rather than an oversight — what the `node:sqlite`
-driver buys is narrower and more useful: **the database outlives the runtime**.
-A `tasks.db` written by Bun opens in plain Node with no Bun installed, which CI
-checks on every platform, so your tasks are never hostage to this choice.
-
-### Environment
-
-| | |
-|---|---|
-| `CLAUDE_TASKS_DB` | Where the database lives. Default: `~/.local/share/claude-tasks/tasks.db`, or `%LOCALAPPDATA%\claude-tasks\tasks.db` on Windows. |
-| `CLAUDE_TASKS_PORT` | The board's port, read by `bun run tasks` and by the MCP. Default 4477. Running `bun run dev` or `bun run start` directly bypasses the CLI, so those take Next's own `PORT` instead. |
-| `XDG_DATA_HOME`, `XDG_STATE_HOME` | Honoured where set, on every platform. |
-
-## Install
-
-```
-/plugin marketplace add javirub/claude-manual-todos-plugin
-/plugin install claude-manual-todos-plugin@claude-manual-todos
-```
-
-It installs at user level, so the tools are available in every project rather
-than only in this one. Bun has to be on `PATH`; nothing else is needed. The
-marketplace clones the repository without dependencies, so the MCP server runs
-`bun install` for itself the first time it starts (`mcp/preflight.ts`).
-
-The first `open_board` in a fresh checkout falls back to `next dev`, which
-compiles on demand and takes a few seconds. Running `bun run build` once in the
-plugin directory makes it start instantly from then on.
-
-## Use
-
-The normal path is that you do nothing: Claude records what is left for you when
-it finishes something, and hands you the link. By hand:
-
-```sh
-bun run tasks serve     # brings the board up (http://127.0.0.1:4477)
-bun run tasks status
-bun run tasks stop
-bun run tasks open /p/costia
-```
-
-In a session, `/tasks` opens the board and `/pendings` reports in the chat.
-
-## Model
+<br>
 
 - A **project** can span several repositories (`project_paths`). That is what
   makes `costia/frontend`, `costia/backend` and `costia/docs-site` one project,
@@ -113,7 +174,12 @@ In a session, `/tasks` opens the board and `/pendings` reports in the chat.
   visible, marked as such, rather than disappearing: seeing what is already done
   is half the context for why the rest is still open.
 
-## Per-project identity
+</details>
+
+<details>
+<summary><b>Per-project identity</b> — six numbers, and why an agent cannot make it unreadable</summary>
+
+<br>
 
 Switching project changes the look of the whole interface, so you know where you
 are without reading anything. A theme is six numbers in the database — hue,
@@ -130,9 +196,12 @@ defeat the purpose.
 It has already caught two real contrast failures, so keep it passing when you
 touch those ramps.
 
-## Language
+</details>
 
-Three audiences, and they do not get the same words.
+<details>
+<summary><b>Language</b> — three audiences, and they do not get the same words</summary>
+
+<br>
 
 **The repository speaks English**, always: this file, the skill, the commands, the
 MCP tool descriptions, code comments and commit messages. So does the scaffolding
@@ -165,19 +234,70 @@ Two things keep the catalogues honest, so neither is done by hand:
 To add a locale: add `messages/<code>.json`, extend `LOCALES` in
 `src/lib/db/settings.ts` with its label, and run both of the above.
 
+</details>
+
+<details>
+<summary><b>Requirements and environment</b></summary>
+
+<br>
+
+| | |
+|---|---|
+| **Bun** | ≥ 1.2, on `PATH`. Developed on 1.4. It is the only hard requirement: the MCP server, the CLI, the session hook and the board all run on it. |
+| **Operating system** | Linux, macOS and Windows. CI runs the whole suite on all three, including starting and stopping the board, because that is where they differ. |
+| **Node.js** | Not needed to use the plugin. Only `scripts/db-portability.mjs` runs on it, and that wants ≥ 22.5 for `node:sqlite`. |
+| **Network** | Once, at build time: `next/font` fetches the four typefaces and self-hosts them. Nothing is fetched at runtime — the board works offline, which matters when the reason you are looking at it is that something else is broken. |
+
+The plugin is **not runnable on Node** as it stands: the source imports without
+file extensions and leans on the `@/` path alias, neither of which Node resolves.
+That is a deliberate limit rather than an oversight — what the `node:sqlite`
+driver buys is narrower and more useful: **the database outlives the runtime**.
+A `tasks.db` written by Bun opens in plain Node with no Bun installed, which CI
+checks on every platform, so your tasks are never hostage to this choice.
+
+| | |
+|---|---|
+| `CLAUDE_TASKS_DB` | Where the database lives. Default: `~/.local/share/claude-tasks/tasks.db`, or `%LOCALAPPDATA%\claude-tasks\tasks.db` on Windows. |
+| `CLAUDE_TASKS_PORT` | The board's port, read by `todos` and by the MCP. Default 4477. Running `bun run dev` or `bun run start` directly bypasses the CLI, so those take Next's own `PORT` instead. |
+| `CLAUDE_TODOS_QUIET` | Set to anything to silence the session-start line. |
+| `XDG_DATA_HOME`, `XDG_STATE_HOME` | Honoured where set, on every platform. |
+
+</details>
+
+## Troubleshooting
+
+**Start here:** `todos doctor` checks everything that has to be true and names
+whichever part is not.
+
+| | |
+|---|---|
+| **The `tasks` MCP server fails with `CONNECTION_CLOSED`** | Almost always Bun. Claude Code spawns MCP servers from its own environment, which is not your login shell — so a Bun installed through **mise, asdf, fnm or Volta** resolves for you and not for it. `todos doctor` says so explicitly when it finds a shim. Fix it by pointing the plugin's `.mcp.json` `command` at the real binary (`which bun` gives the path), or at `${CLAUDE_PLUGIN_ROOT}/bin/mcp.sh`, which goes looking. |
+| **The board takes twenty seconds the first time** | A fresh checkout has no build, so it falls back to `next dev` and compiles on demand. Run `bun run build` once in the plugin directory and it starts instantly from then on. |
+| **The port is taken** | `CLAUDE_TASKS_PORT=4488`, in the environment Claude Code sees. |
+| **`bun install` runs on first use** | Expected. The marketplace clones the repository without dependencies, so the MCP server installs them for itself (`mcp/preflight.ts`). It only happens once. |
+| **The status bar shows nothing** | It is silent by design when the directory belongs to no project or nothing is pending. `todos statusline status` says which of those it is. |
+
 ## Development
 
 ```sh
-bun test              # schema, path containment, derived state, ordering, themes
+bun test              # schema, path containment, derived state, ordering, themes, manifests
 bun run typecheck     # includes message keys, via the next-intl augmentation
 bun run lint:messages # catalogue health: missing, inconsistent or orphan messages
 bun run dev
 ```
 
+To work on the plugin itself, register this checkout as its own marketplace so
+`${CLAUDE_PLUGIN_ROOT}` points at your working tree and edits are live:
+
+```
+/plugin marketplace add /path/to/this/checkout
+/plugin install todos@claude-manual-todos
+```
+
 Anything that touches paths, spawns a process or kills one deserves a look on
 more than one platform. CI covers it, and the parts most likely to break are
 `isWithin` in `src/lib/db/paths.ts` (separators and case folding) and the
-serve/stop pair in `bin/tasks.ts` (process groups on Unix, `taskkill /T` on
+serve/stop pair in `bin/todos.ts` (process groups on Unix, `taskkill /T` on
 Windows).
 
 The MCP tools are the plugin's interface and nothing above exercises the
@@ -191,6 +311,47 @@ bun scripts/mcp-smoke.ts where_am_i '{"cwd":"/some/path"}'
 Run it after touching `mcp/main.ts`, and on any Renovate PR that moves
 `@modelcontextprotocol/server` or `zod`. Point `CLAUDE_TASKS_DB` at a scratch
 file before calling anything that writes.
+
+### The pictures
+
+```sh
+bun run shots                  # seed, build, capture, frame — into docs/media/
+bun run shots -- --skip-build  # reuse .next
+bun run shots -- --keep        # leave the demo board up to click around in
+```
+
+It seeds a throwaway database (`scripts/seed-demo.ts`, English, dates relative to
+today) on its own port, so neither your tasks nor a board you have open are
+touched. Every shot waits on an **anchor** — a string that only exists once the
+screen has really rendered — because otherwise a photograph of a loading state is
+indistinguishable from a green run. Regenerate them whenever the interface
+changes; CI fails if the files the README points at are missing.
+
+**Then look at the pictures.** The exit code says a screen rendered, not that it
+rendered right.
+
+## Layout
+
+```
+.claude-plugin/   plugin manifest and marketplace entry
+.mcp.json         declares the "tasks" MCP server
+messages/         en.json and es.json — the board's own words, in ICU
+skills/           when to record a task, and how to write a step
+commands/         /todos:tasks and /todos:pendings
+hooks/            one line at session start with what is pending here
+bin/todos.ts      the CLI: board lifecycle, the digest, the statusline, doctor
+bin/mcp.sh        finds Bun when a version manager has hidden it
+mcp/server.ts     launcher: checks dependencies, then hands over to main.ts
+mcp/main.ts       21 MCP tools over the database
+src/lib/db/       schema, migrations and queries — shared by the MCP and the app
+src/lib/digest.ts one answer to "what is waiting here", for the CLI, bar and hook
+src/lib/theme/    each project's palette, derived in OKLCH
+src/app/          the board
+scripts/          the demo seed, the screenshot pipeline, the MCP smoke driver
+docs/media/       the pictures above, regenerated by bun run shots
+renovate.json     dependency updates, via the Renovate GitHub App
+.github/          CI on Linux, macOS and Windows
+```
 
 ## Licence
 

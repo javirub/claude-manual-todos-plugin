@@ -19,16 +19,20 @@ export default async function ProjectPage({
 }) {
   const { slug } = await routeParams;
   const params = readParams(await searchParams);
-  const { projects, active, tasks, counts, owners, selected, totals, locale } = loadBoard(params, slug);
+  const { projects, active, tasks, counts, owners, selected, totals, locale, statusline } = loadBoard(params, slug);
   if (!active) notFound();
 
 
   return (
-    <div className="shell" data-detail={params.task ? "open" : "closed"}>
+    <div
+      className="shell"
+      data-detail={params.task ? "open" : "closed"}
+      data-rail={params.rail === "open" ? "open" : undefined}
+    >
       {/* The project's identity, later in the cascade than the neutral default. */}
       <style dangerouslySetInnerHTML={{ __html: themeStyleSheet(active.theme) }} />
       <LiveRefresh />
-      <Rail projects={projects} active={active} params={params} totals={totals} locale={locale} />
+      <Rail projects={projects} active={active} params={params} totals={totals} locale={locale} statusline={statusline} />
       <TaskListPane
         title={active.name}
         lede={active.summary}
@@ -40,7 +44,7 @@ export default async function ProjectPage({
         selectedSlug={selected?.slug}
       />
       {selected ? (
-        <TaskDetail task={selected} params={params} />
+        <TaskDetail task={selected} params={params} base={`/p/${active.slug}`} />
       ) : (
         <DetailEmpty open={counts.open} overdue={active.counts.overdue} />
       )}

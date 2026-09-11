@@ -1,34 +1,32 @@
 #!/usr/bin/env bun
 /**
  * One line of context at the start of a session: what is already waiting for the
- * user in this project. Silent when there is nothing, or when the directory
- * belongs to no project — a hook that speaks up every time stops being read.
+ * user in this project, and the most urgent of it.
+ *
+ * Silent when there is nothing, when the directory belongs to no project, or
+ * when CLAUDE_TODOS_QUIET is set — a hook that speaks up every time stops being
+ * read, and the whole value of this one is that its line is always news.
  */
-import { connect } from "../src/lib/db";
-import { resolveProjectByPath } from "../src/lib/db/projects";
-import { listTasks } from "../src/lib/db/tasks";
+import { boardOrigin } from "@/lib/db/paths";
+import { digestFor, hookLine } from "@/lib/digest";
 
 try {
+  if (process.env.CLAUDE_TODOS_QUIET) process.exit(0);
+
   const input = await Bun.stdin.text().catch(() => "");
   const payload = input ? (JSON.parse(input) as { cwd?: string }) : {};
   const cwd = payload.cwd || process.cwd();
 
-  const db = connect();
-  const resolved = resolveProjectByPath(db, cwd);
-  if (!resolved) process.exit(0);
+  const digest = digestFor(cwd);
+  if (!digest || !digest.open.length) process.exit(0);
 
-  const open = listTasks(db, { projectId: resolved.project.id, state: "open" });
-  if (!open.length) process.exit(0);
+  // Only mention the board if it is already up. Starting it here would make
+  // every session pay for a server nobody asked for.
+  const up = await fetch(`${boardOrigin()}/api/health`, { signal: AbortSignal.timeout(300) })
+    .then((r) => r.ok)
+    .catch(() => false);
 
-  const now = new Date().toISOString();
-  const overdue = open.filter((t) => t.dueAt !== null && t.dueAt < now).length;
-  const parts = [open.length === 1 ? "1 open manual task" : `${open.length} open manual tasks`];
-  if (overdue) parts.push(overdue === 1 ? "1 overdue" : `${overdue} overdue`);
-
-  console.log(
-    `${resolved.project.name}: ${parts.join(", ")}. ` +
-      `Read them with list_tasks before recording anything new; /tasks opens the board.`,
-  );
+  console.log(hookLine(digest, up ? `${boardOrigin()}/p/${digest.project.slug}` : null));
 } catch {
   // A hook that fails must never be the reason a session does not start.
   process.exit(0);

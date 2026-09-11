@@ -79,11 +79,16 @@ code, pre, .tabular { font-family: var(--font-mono), ui-monospace, monospace; }
 .rail { background: color-mix(in oklab, var(--surface) 55%, transparent); }
 
 .wordmark {
-  display: flex; align-items: baseline; gap: .5rem;
+  display: flex; align-items: baseline; gap: .5rem; min-width: 0;
   font-family: var(--font-heading), sans-serif;
   font-size: .95rem; font-weight: 600; letter-spacing: -.01em;
 }
+.wordmark > span { white-space: nowrap; }
+/* The project slug, which is as long as someone felt like making it. It gives
+   up its width before the wordmark does, and ellipsises rather than wrapping
+   the name onto a second line. */
 .wordmark small {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: var(--font-mono), monospace;
   font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
 }
@@ -379,7 +384,21 @@ code, pre, .tabular { font-family: var(--font-mono), ui-monospace, monospace; }
 
 /* ---------------------------------------------------------- responsive */
 
-.back-link { display: none; }
+/* Two escape hatches for the widths where a pane is off screen. Both are links
+   carrying URL state rather than buttons carrying component state, so the back
+   button closes them and a link to a board is a link to the same board on a
+   phone. Hidden at full width, where nothing is ever out of reach. */
+.back-link,
+.rail-toggle {
+  display: none; align-items: center; gap: .3rem;
+  width: fit-content; margin-bottom: .55rem;
+  padding: .2rem .55rem .22rem;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  font-size: .72rem; color: var(--muted); text-decoration: none;
+  transition: border-color .12s ease, color .12s ease;
+}
+.back-link:hover,
+.rail-toggle:hover { border-color: var(--accent); color: var(--text); }
 
 @media (max-width: 1180px) {
   .shell { grid-template-columns: 13rem minmax(0, 1fr); }
@@ -392,6 +411,12 @@ code, pre, .tabular { font-family: var(--font-mono), ui-monospace, monospace; }
   .shell { grid-template-columns: minmax(0, 1fr); }
   .rail { display: none; }
   .rail-toggle { display: inline-flex; }
+
+  /* The rail is the whole screen when it is open, because the alternative on a
+     phone is three columns of 120px each. */
+  .shell[data-rail="open"] .rail { display: flex; }
+  .shell[data-rail="open"] .list-pane,
+  .shell[data-rail="open"] .detail-pane { display: none; }
 }
 
 /* ------------------------------------------------------------ language */
