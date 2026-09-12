@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,6 +63,19 @@ function present(path: string): boolean {
   try { lstatSync(path); return true; } catch { return false; }
 }
 
+/** Windows spells the same directory `C:\Users\RUNNER~1\…` through one API and
+ * `C:\Users\runneradmin\…` through another, and a different case is still the
+ * same file; macOS resolves /tmp through /private. Canonicalise what exists, and
+ * fall back to a plain resolve for a path that does not exist yet. */
+function samePath(left: string, right: string, windows: boolean): boolean {
+  const canonical = (value: string) => {
+    try { return realpathSync.native(value); } catch { return resolve(value); }
+  };
+  const a = canonical(left);
+  const b = canonical(right);
+  return windows ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
 export function inspectInstallation(options = installationOptions()) {
   const cli = join(options.binDirectory, options.windows ? "todos.cmd" : "todos");
   const lookup = spawnSync(options.windows ? "where" : "which", ["todos"], { encoding: "utf8", timeout: 1000 });
@@ -75,7 +88,7 @@ export function inspectInstallation(options = installationOptions()) {
     // write is fatal: we never overwrite it. Something else merely winning the
     // PATH lookup is the user's to resolve, and must not block reinstalling ours.
     conflict: present(cli) && !owned(cli) ? cli : null,
-    shadowedBy: resolved && resolve(resolved) !== resolve(cli) && !owned(resolved) ? resolved : null,
+    shadowedBy: resolved && !samePath(resolved, cli, options.windows) && !owned(resolved) ? resolved : null,
     onPath: (process.env.PATH || "").split(options.windows ? ";" : ":").includes(options.binDirectory),
     binDirectory: options.binDirectory,
     launcher: join(options.directory, "launcher.mjs"),

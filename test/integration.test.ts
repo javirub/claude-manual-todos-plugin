@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { inspectInstallation, installIntegration, refreshIntegration, type InstallationOptions } from "@/lib/integration";
@@ -10,7 +10,14 @@ import { createTask } from "@/lib/db/tasks";
 import { setStatuslineDefault, setStatuslineOverride } from "@/lib/db/settings";
 
 const temporary: string[] = [];
-afterEach(() => { for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const directory of temporary.splice(0)) {
+    // Windows holds a handle to a just-exited child's files for a moment. A temp
+    // directory that outlives the run is the operating system's to sweep up, and
+    // never a reason to fail a test that already made its point.
+    try { rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* %TEMP% */ }
+  }
+});
 
 function fixture(): InstallationOptions {
   const directory = mkdtempSync(join(tmpdir(), "todos integration ' "));
@@ -129,7 +136,9 @@ describe("opt-in installation", () => {
       process.env.PATH = `${foreign}${options.windows ? ";" : ":"}${previous}`;
       const before = inspectInstallation(options);
       expect(before.conflict).toBe(null);
-      expect(before.shadowedBy).toBe(command);
+      // The lookup may answer with another spelling of the same path: what matters
+      // is that it points at the other command, not at ours.
+      expect(before.shadowedBy && realpathSync.native(before.shadowedBy)).toBe(realpathSync.native(command));
       const result = installIntegration(true, options);
       expect(result.cliInstalled).toBe(true);
       expect(result.conflict).toBe(null);
