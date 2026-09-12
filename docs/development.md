@@ -68,6 +68,30 @@ CI checks both groups.
 **Then look at the pictures.** The exit code says a screen rendered, not that it
 rendered right.
 
+## Releases
+
+Tags are cut by `.github/workflows/release.yml`, after CI has passed on all three
+operating systems — never beside it, so a tag always names a commit the matrix
+agreed on.
+
+The version in `package.json` decides:
+
+- **It names a version with no tag.** That is the release: `v1.2.0` is created at
+  that commit.
+- **It names a version already released.** The existing tag is never moved —
+  moving one rewrites what somebody already installed — so the patch goes up by
+  one instead. The bump is written to all three manifests, committed as
+  `Release 1.2.1`, and tagged. Every push to `main` therefore produces a tag:
+  either the version you set, or the next patch.
+
+To release a version of your own choosing, raise it in `package.json`,
+`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — `manifest.test.ts`
+fails if the three disagree — and push. The workflow does the rest.
+
+The bump commit is pushed with `GITHUB_TOKEN`, which starts no workflow run, so a
+release cannot trigger another release; the author check in the workflow is the
+second lock on that door.
+
 ## Layout
 
 ```
@@ -90,5 +114,5 @@ src/app/          the board
 scripts/          the demo seed, the screenshot pipeline, the MCP smoke driver
 docs/media/       the board captures; docs/media/manual/ the hand-made ones
 renovate.json     dependency updates, via the Renovate GitHub App
-.github/          CI on Linux, macOS and Windows
+.github/          CI on Linux, macOS and Windows; release.yml cuts the tags
 ```

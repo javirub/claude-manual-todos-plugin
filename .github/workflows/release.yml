@@ -1,0 +1,140 @@
+name: Release
+
+# A tag is what people install, so it is cut from a commit the whole matrix has
+# already agreed on: this runs after CI, never beside it.
+#
+# The version in package.json decides. If it names a version that has no tag,
+# that is the release. If it names one already released, the tag is not moved —
+# moving a tag rewrites what someone already installed — the patch goes up by
+# one instead, and that bump is committed, so the version the plugin reports and
+# the version of the tag can never be two different things.
+#
+# The bump commit is pushed with GITHUB_TOKEN, and GitHub starts no workflow for
+# those, so it cannot come back round as another release. The author check below
+# is the belt to that brace, for the day someone swaps in a personal token.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+# Two releases racing would both read the same tags and pick the same number.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag the version in package.json
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Decide what to release
+        id: decide
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$(git log -1 --format=%an "$HEAD_SHA")" = "github-actions[bot]" ]; then
+            echo "The release commit itself needs no release."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          version=$(node -p "require('./package.json').version")
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Anything with a suffix is a deliberate choice, and guessing its
+            # successor is not this workflow's business.
+            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::$version is already tagged and is not a plain x.y.z to take a patch from."
+              exit 1
+            fi
+            echo "release=$version" >> "$GITHUB_OUTPUT"
+            echo "bump=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "package.json asks for $version, which has never been released."
+            echo "release=$version" >> "$GITHUB_OUTPUT"
+            echo "bump=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch <<< "$version"
+          while :; do
+            patch=$((patch + 1))
+            candidate="$major.$minor.$patch"
+            git rev-parse -q --verify "refs/tags/v$candidate" >/dev/null || break
+          done
+          echo "v$version is taken; releasing $candidate instead."
+          echo "release=$candidate" >> "$GITHUB_OUTPUT"
+          echo "bump=1" >> "$GITHUB_OUTPUT"
+          echo "previous=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Raise the version in all three manifests
+        if: steps.decide.outputs.skip != '1' && steps.decide.outputs.bump == '1'
+        shell: bash
+        env:
+          FROM: ${{ steps.decide.outputs.previous }}
+          TO: ${{ steps.decide.outputs.release }}
+        run: |
+          set -euo pipefail
+          escaped=${FROM//./\\.}
+          for file in package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json; do
+            sed -i "s/\"version\": \"$escaped\"/\"version\": \"$TO\"/" "$file"
+          done
+
+          # CI does not run on a commit pushed with GITHUB_TOKEN, so the check
+          # that keeps these three from drifting apart runs here instead.
+          package=$(node -p "require('./package.json').version")
+          plugin=$(node -p "require('./.claude-plugin/plugin.json').version")
+          listed=$(node -p "require('./.claude-plugin/marketplace.json').plugins.find(p => p.name === 'todos').version")
+          if [ "$package" != "$TO" ] || [ "$plugin" != "$TO" ] || [ "$listed" != "$TO" ]; then
+            echo "::error::The manifests disagree after the bump: $package, $plugin, $listed."
+            exit 1
+          fi
+
+      - name: Tag it
+        if: steps.decide.outputs.skip != '1'
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE: ${{ steps.decide.outputs.release }}
+          BUMP: ${{ steps.decide.outputs.bump }}
+        run: |
+          set -euo pipefail
+
+          # Read before the bump commit exists, so a release does not announce
+          # itself among the changes it is releasing.
+          previous=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          notes=$(git log --no-merges --max-count=50 --format='- %s' "${previous:+$previous..}HEAD")
+
+          if [ "$BUMP" = "1" ]; then
+            git fetch origin main
+            if [ "$(git rev-parse origin/main)" != "$HEAD_SHA" ]; then
+              echo "main moved on while this ran; the next push releases instead."
+              exit 0
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --message "Release $RELEASE" \
+              package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
+            git push origin HEAD:main
+          fi
+
+          printf 'todos %s\n\n%s\n' "$RELEASE" "$notes" | git tag --annotate --file - "v$RELEASE"
+          git push origin "v$RELEASE"
+          echo "Released v$RELEASE at $(git rev-parse HEAD)." >> "$GITHUB_STEP_SUMMARY"
