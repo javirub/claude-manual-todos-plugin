@@ -117,6 +117,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          # An annotated tag is signed by a committer just as a commit is, so
+          # this is needed on both paths, not only where something is committed.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           # Read before the bump commit exists, so a release does not announce
           # itself among the changes it is releasing.
           previous=$(git describe --tags --abbrev=0 2>/dev/null || true)
@@ -128,8 +133,6 @@ jobs:
               echo "main moved on while this ran; the next push releases instead."
               exit 0
             fi
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit --message "Release $RELEASE" \
               package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json
             git push origin HEAD:main
