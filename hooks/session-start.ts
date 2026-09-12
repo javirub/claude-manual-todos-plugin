@@ -9,6 +9,9 @@
  */
 import { boardOrigin } from "@/lib/db/paths";
 import { digestFor, hookLine } from "@/lib/digest";
+import { refreshIntegration } from "@/lib/integration";
+
+try { refreshIntegration(); } catch { /* Optional integration must not break a session. */ }
 
 try {
   if (process.env.CLAUDE_TODOS_QUIET) process.exit(0);

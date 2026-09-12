@@ -12,6 +12,9 @@ allowed-tools: mcp__plugin_todos_tasks__where_am_i, mcp__plugin_todos_tasks__lis
 
 If `$ARGUMENTS` names a project or an owner, filter by it.
 
+If the directory belongs to no project, suggest `/todos:project` to create or
+associate one. Do not create one from this read-only command.
+
 Change nothing: this command only reads. If a task looks stale or wrong, say so
 and let the user decide — do not fix it here.
 

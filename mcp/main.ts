@@ -28,7 +28,6 @@ import {
   linkProjects,
   listProjectRelations,
   listProjects,
-  resolveProjectByPath,
   resolveProjectsByPath,
   setProjectTheme,
   suggestFreeHue,
@@ -117,9 +116,9 @@ const themeSchema = z.object({
 });
 
 const stepSchema = z.object({
-  title: z.string().describe("One imperative action someone can finish in a sitting. Written in Spanish."),
-  body: z.string().nullish().describe("Where it is in the UI and what to do, in markdown and in Spanish. Code fences render with a copy button."),
-  why: z.string().nullish().describe("What happens if they skip it, when the consequence is not obvious. A manual step with no reason gets skipped or done wrong. In Spanish."),
+  title: z.string().describe("One imperative action someone can finish in a sitting. Use the language reported by where_am_i."),
+  body: z.string().nullish().describe("Where it is in the UI and what to do, in markdown and in the user's language. Code fences render with a copy button."),
+  why: z.string().nullish().describe("What happens if they skip it, when the consequence is not obvious. A manual step with no reason gets skipped or done wrong. Use the user's language."),
   value: z.string().nullish().describe("The exact value they will paste: an identifier, a URL, a bucket name. Renders with a copy button."),
   linkUrl: z.string().nullish().describe("Link to the console where it is done, not to the documentation."),
   linkLabel: z.string().nullish(),
@@ -217,7 +216,7 @@ server.registerTool(
     description:
       "Registers a project and its visual identity. A project can span several repositories: pass them " +
       "all in `paths`. The identity is invented HERE and only here, when a project that did not exist " +
-      "needs tasks recorded against it; pick a hue that matches the product and sits 25° or more from " +
+      "is created during project setup or needs tasks recorded; pick a hue that matches the product and sits 25° or more from " +
       "every other project, or leave it out to get the widest free gap.",
     inputSchema: z.object({
       name: z.string(),
@@ -227,7 +226,7 @@ server.registerTool(
           z.object({
             path: z.string(),
             label: z.string().nullish(),
-            role: z.string().nullish().describe("frontend, backend, docs, cluster… Shown in the board's rail, so Spanish reads better here."),
+            role: z.string().nullish().describe("frontend, backend, docs, cluster… Shown in the board's rail; use the user's language."),
           }),
         )
         .optional(),
@@ -438,13 +437,13 @@ server.registerTool(
       "Creates a task only the user can do. Only after checking list_tasks and confirming it does not " +
       "already exist. If you could have automated it, automate it — do not record it. Use `phases` " +
       "when the order is genuinely mandatory and loose `steps` when it is not: inventing a sequence " +
-      "that does not exist is worse than having no phases. Content in Spanish.",
+      "that does not exist is worse than having no phases. Use the language reported by where_am_i.",
     inputSchema: z.object({
       project: z.string().optional(),
       cwd: z.string().optional(),
       alsoProjects: z.array(z.string()).optional().describe("Other projects this same task also belongs to."),
       title: z.string(),
-      summary: z.string().nullish().describe("A sentence or two on why the task exists and what it unblocks. In Spanish."),
+      summary: z.string().nullish().describe("A sentence or two on why the task exists and what it unblocks. Use the user's language."),
       dueAt: z.string().nullish().describe("YYYY-MM-DD, only when there is a real date. Do not invent deadlines: they empty the overdue bucket of meaning."),
       phases: z.array(z.object({ name: z.string(), note: z.string().nullish(), steps: z.array(stepSchema) })).optional(),
       steps: z.array(stepSchema).optional(),
@@ -499,7 +498,7 @@ server.registerTool(
       "this avoids.",
     inputSchema: z.object({
       task: z.string(),
-      phase: z.string().nullish().describe("Phase name, in Spanish. Created at the end if it does not exist."),
+      phase: z.string().nullish().describe("Phase name, in the user's language. Created at the end if it does not exist."),
       steps: z.array(stepSchema),
     }),
   },

@@ -17,8 +17,8 @@ Bring it up if that says it is stopped, and hand the user the link.
    overdue before this week, and say what blocks what if any task is linked to
    another.
 
-If the directory belongs to no project, do not invent one: say so and ask whether
-they want it registered.
+If the directory belongs to no project, open the general board without passing a
+project or cwd, and suggest `/todos:project` to create or associate one.
 
 Nothing here writes. Do not create, edit or close anything, even if what you find
 looks wrong — say what looks wrong instead.

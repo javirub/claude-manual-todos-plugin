@@ -17,7 +17,10 @@
  *   responded and a capture of the page that rendered are the same green run,
  *   and the README ends up showing a loading state.
  * - **The output directory is wiped.** A shot that stops being generated has to
- *   stop existing, or it is not a build artefact, it is a drawer.
+ *   stop existing, or it is not a build artefact, it is a drawer. The one
+ *   exception is `docs/media/manual/`, which holds the pictures no run produces
+ *   — the terminal screenshot of the statusline. Anything not generated lives
+ *   there, so the rule above needs no list of filenames to spare.
  *
  * The frame is composed in the browser, on the board's own origin, rather than
  * with an image library: the caption is type, and it has to be the board's
@@ -26,7 +29,7 @@
  * `var(--font-geometric)` and gets it.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,6 +42,8 @@ import { NEUTRAL_THEME, themeStyleSheet } from "@/lib/theme/tokens";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "docs", "media");
+/** Inside the output directory but not produced here, so never wiped. */
+const MANUAL = "manual";
 const DB = join(ROOT, ".next", "cache", "shots-demo.db");
 const PORT = Number(process.env.SHOTS_PORT ?? 4479);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -268,8 +273,13 @@ async function main(): Promise<void> {
   }
 
   // Wiped, not just created: a shot that stops being generated has to stop
-  // existing, or the README keeps pointing at something no run produced.
-  rmSync(OUT, { recursive: true, force: true });
+  // existing, or the README keeps pointing at something no run produced. Every
+  // entry goes except `manual/`, which is the opposite case — pictures this run
+  // never produces, and deleting them is how the README lost one before.
+  mkdirSync(OUT, { recursive: true });
+  for (const entry of readdirSync(OUT, { withFileTypes: true })) {
+    if (entry.name !== MANUAL) rmSync(join(OUT, entry.name), { recursive: true, force: true });
+  }
   mkdirSync(join(OUT, "raw"), { recursive: true });
 
   const board = await startBoard();

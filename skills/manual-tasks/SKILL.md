@@ -1,5 +1,6 @@
 ---
 name: manual-tasks
+user-invocable: false
 description: Record, correct and close the things only the user can do by hand — a form in some console, a secret to seed, a promotion to trigger, a review to answer. Use whenever what you just delivered cannot take effect until someone acts somewhere you have no access, and whenever the world changes under a task already recorded. Task content is written in the user's own language, which the tools report.
 allowed-tools: mcp__plugin_todos_tasks__where_am_i, mcp__plugin_todos_tasks__list_projects, mcp__plugin_todos_tasks__create_project, mcp__plugin_todos_tasks__update_project, mcp__plugin_todos_tasks__add_project_path, mcp__plugin_todos_tasks__remove_project_path, mcp__plugin_todos_tasks__link_projects, mcp__plugin_todos_tasks__set_project_theme, mcp__plugin_todos_tasks__list_tasks, mcp__plugin_todos_tasks__get_task, mcp__plugin_todos_tasks__create_task, mcp__plugin_todos_tasks__update_task, mcp__plugin_todos_tasks__add_steps, mcp__plugin_todos_tasks__update_step, mcp__plugin_todos_tasks__complete_steps, mcp__plugin_todos_tasks__reopen_steps, mcp__plugin_todos_tasks__complete_task, mcp__plugin_todos_tasks__delete_step, mcp__plugin_todos_tasks__delete_task, mcp__plugin_todos_tasks__link_tasks, mcp__plugin_todos_tasks__open_board
 ---

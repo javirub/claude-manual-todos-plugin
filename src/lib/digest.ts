@@ -67,7 +67,8 @@ export function countsPhrase(digest: Digest, noun = false): string {
 
 /** The statusline segment. Deliberately short: it shares a line with everything else. */
 export function statuslineSegment(digest: Digest): string {
-  return `◆ ${digest.project.name} · ${countsPhrase(digest)}`;
+  const name = digest.project.name.replace(/[\x00-\x1f\x7f-\x9f]/g, "");
+  return `◆ ${name} · ${countsPhrase(digest)}`;
 }
 
 /** The session hook's single line. */

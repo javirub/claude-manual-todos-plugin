@@ -12,8 +12,7 @@
  * at all; `todos statusline` is what the status bar calls on every render.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,6 +29,7 @@ import {
 } from "@/lib/db/settings";
 import { digestFor, statuslineSegment, terminalDigest } from "@/lib/digest";
 import { IS_WINDOWS, bunExecutable, openerCommand } from "@/lib/runtime";
+import { inspectInstallation, installIntegration } from "@/lib/integration";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PID_FILE = join(stateDir(), "board.pid");
@@ -133,6 +133,13 @@ function openInBrowser(target: string): void {
  * "no project here", "turned off" and "the database is busy" alike.
  */
 function statusline(rest: string[], cwd: string): number {
+  const cwdIndex = rest.indexOf("--cwd");
+  if (cwdIndex !== -1) {
+    const explicit = rest[cwdIndex + 1];
+    if (!explicit || explicit.startsWith("--")) return 0;
+    cwd = resolve(explicit);
+    rest = rest.filter((_, index) => index !== cwdIndex && index !== cwdIndex + 1);
+  }
   const global = rest.includes("--global");
   const verb = rest.find((a) => !a.startsWith("--"));
 
@@ -273,44 +280,32 @@ async function doctor(cwd: string): Promise<number> {
 
 /* ------------------------------------------------------------------ setup */
 
-/** Puts the CLI on PATH and prints the statusline snippet. Writes nothing else. */
-function setup(): number {
-  const target = join(ROOT, "bin", "todos.ts");
-  const binDir = join(homedir(), ".local", "bin");
-  const link = join(binDir, "todos");
-
-  if (IS_WINDOWS) {
-    console.log(`Add this directory to your PATH, or make a shim for it:\n  ${join(ROOT, "bin")}\n`);
-  } else {
-    try {
-      mkdirSync(binDir, { recursive: true });
-      try {
-        unlinkSync(link);
-      } catch {
-        /* nothing there yet */
-      }
-      symlinkSync(target, link);
-      console.log(`Linked ${link} → ${target}`);
-      if (!(process.env.PATH ?? "").split(":").includes(binDir)) {
-        console.log(`${binDir} is not on your PATH. Add it to your shell profile.`);
-      }
-    } catch (error) {
-      console.error(`Could not link into ${binDir}: ${(error as Error).message}`);
-      return 1;
-    }
+/** Stable launchers; --check never installs, --statusline does not install the CLI. */
+function setup(rest: string[]): number {
+  const unknown = rest.some(arg => !["--check", "--json", "--statusline"].includes(arg));
+  // --check inspects and --statusline installs: asking for both says nothing.
+  if (unknown || (rest.includes("--check") && rest.includes("--statusline"))) {
+    console.error("Usage: todos setup [--check | --statusline] [--json]");
+    return 2;
   }
-
-  console.log(
-    `\nFor the statusline, in ~/.claude/settings.json:\n\n` +
-      `  "statusLine": {\n` +
-      `    "type": "command",\n` +
-      `    "command": "bun ${target} statusline"\n` +
-      `  }\n\n` +
-      `Already have one? Append the segment to it instead:\n\n` +
-      `  your-statusline; bun ${target} statusline\n\n` +
-      `Turn it off per project with "todos statusline off", or everywhere with "--global".`,
-  );
-  return 0;
+  try {
+    const result = rest.includes("--check")
+      ? inspectInstallation()
+      : installIntegration(!rest.includes("--statusline"));
+    if (rest.includes("--json")) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`CLI: ${result.cli}${result.cliInstalled ? " (installed)" : " (not installed)"}`);
+      if (result.conflict) console.log(`Conflict: ${result.conflict}`);
+      if (result.shadowedBy) console.log(`Another todos comes first on your PATH: ${result.shadowedBy}. Ours runs only once ${result.binDirectory} precedes it.`);
+      if (!result.onPath) console.log(`To use todos in a new terminal, add ${result.binDirectory} to your user PATH.`);
+      console.log(`Bun: ${result.bun}\nStable launcher: ${result.launcher}`);
+      console.log("Run /todos:statusline in Claude Code to configure the bar, or /todos:onboarding for guided setup.");
+    }
+    return 0;
+  } catch (error) {
+    console.error(`Could not configure todos: ${(error as Error).message}`);
+    return 1;
+  }
 }
 
 /* ------------------------------------------------------------------- main */
@@ -327,7 +322,10 @@ const USAGE = `todos — the manual tasks only you can do
   todos statusline         print the status-bar segment for this directory
   todos statusline on|off|default|status [--global]
   todos doctor             check everything that has to be true for this to work
-  todos setup              link the CLI onto PATH and print the statusline snippet`;
+  todos setup              install the stable terminal launcher
+  todos setup --check --json  inspect integrations without changing files
+  todos setup --statusline --json  prepare only the statusline launcher (no CLI)
+  todos statusline --cwd <path>  print a segment for an explicit directory`;
 
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
@@ -383,7 +381,7 @@ async function main(): Promise<void> {
       process.exitCode = await doctor(cwd);
       return;
     case "setup":
-      process.exitCode = setup();
+      process.exitCode = setup(rest);
       return;
     case "help":
     case "--help":

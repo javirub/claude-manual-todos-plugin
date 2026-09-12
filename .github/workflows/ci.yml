@@ -59,7 +59,8 @@ jobs:
         run: bun run build
 
       # The README's pictures are committed, and a README pointing at a file
-      # that no run produces is worse than one with no pictures at all.
+      # that no run produces is worse than one with no pictures at all. The two
+      # groups are restored differently, so they are reported differently.
       - name: The README's pictures exist
         shell: bash
         run: |
@@ -67,6 +68,12 @@ jobs:
           for shot in overview steps identity blocked; do
             if [ ! -s "docs/media/$shot.png" ]; then
               echo "docs/media/$shot.png is missing or empty. Run: bun run shots"
+              missing=1
+            fi
+          done
+          for shot in statusline; do
+            if [ ! -s "docs/media/manual/$shot.png" ]; then
+              echo "docs/media/manual/$shot.png is missing or empty. No run produces it: restore it from git."
               missing=1
             fi
           done
