@@ -1,4 +1,4 @@
-import type { Project, Task, TaskSummary } from "@/lib/db/types";
+import type { Project, ProjectPath, Task, TaskSummary } from "@/lib/core/types";
 
 import { BUCKET_ORDER, bucketOf, daysBetween, type DueBucket } from "./dates";
 
@@ -150,12 +150,22 @@ export function projectLine(project: Project): string {
  * an error — the same database is read from several machines — but it has to be
  * visible, or it is discovered by wondering why the board never speaks.
  */
-export function projectDetailText(project: Project, missing?: (path: string) => boolean): string {
+/**
+ * Paths are passed in rather than read off the project, because they are not the
+ * project's: a checkout is one directory on one computer, and the hosted store
+ * does not know about any of them. Local mode hands over what the database has,
+ * cloud mode what this machine has, and neither has to special-case the other.
+ */
+export function projectDetailText(
+  project: Project,
+  paths: ProjectPath[],
+  missing?: (path: string) => boolean,
+): string {
   const lines = [projectLine(project)];
   if (project.summary) lines.push(project.summary);
-  if (project.paths.length) {
+  if (paths.length) {
     lines.push("Paths:");
-    for (const p of project.paths) {
+    for (const p of paths) {
       const gone = missing?.(p.path) ? "  — not on disk here" : "";
       lines.push(`  ${p.path}${p.role ? `  (${p.role})` : ""}${gone}`);
     }

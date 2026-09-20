@@ -7,7 +7,8 @@
  * when CLAUDE_TODOS_QUIET is set — a hook that speaks up every time stops being
  * read, and the whole value of this one is that its line is always news.
  */
-import { boardOrigin } from "@/lib/db/paths";
+import { getLocalState, getStore } from "@/lib/core";
+import { boardHome, projectUrl } from "@/lib/permalink";
 import { digestFor, hookLine } from "@/lib/digest";
 import { refreshIntegration } from "@/lib/integration";
 
@@ -20,16 +21,16 @@ try {
   const payload = input ? (JSON.parse(input) as { cwd?: string }) : {};
   const cwd = payload.cwd || process.cwd();
 
-  const digest = digestFor(cwd);
+  const digest = await digestFor(getStore(), getLocalState(), cwd);
   if (!digest || !digest.open.length) process.exit(0);
 
   // Only mention the board if it is already up. Starting it here would make
   // every session pay for a server nobody asked for.
-  const up = await fetch(`${boardOrigin()}/api/health`, { signal: AbortSignal.timeout(300) })
+  const up = await fetch(`${boardHome()}/api/health`, { signal: AbortSignal.timeout(300) })
     .then((r) => r.ok)
     .catch(() => false);
 
-  console.log(hookLine(digest, up ? `${boardOrigin()}/p/${digest.project.slug}` : null));
+  console.log(hookLine(digest, up ? projectUrl(digest.project.slug) : null));
 } catch {
   // A hook that fails must never be the reason a session does not start.
   process.exit(0);

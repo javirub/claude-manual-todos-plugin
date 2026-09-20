@@ -1,121 +1,43 @@
 #!/usr/bin/env bun
 /**
- * The board's lifecycle, and the only way to read the list without spending a
- * model turn.
+ * The terminal surface: the board's controls, and the only way to read the list
+ * without spending a model turn.
  *
- * The MCP server calls into `ensureUp` so that "register a task" and "look at
- * the board" stay independent: writing never needs the server to be up, and
- * bringing it up is a single idempotent call.
+ * The lifecycle itself lives in @/lib/board-process, because the MCP server needs
+ * it too and must not import the status line and the installer to get at it.
  *
- * Everything else here exists because a slash command costs a turn and this does
- * not. Inside a Claude Code session, `!todos` runs it locally with no inference
- * at all; `todos statusline` is what the status bar calls on every render.
+ * Everything here exists because a slash command costs a turn and this does not.
+ * Inside a Claude Code session, `!todos` runs it locally with no inference at all;
+ * `todos statusline` is what the status bar calls on every render.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-import { ensureDependencies } from "../mcp/preflight";
-import { connect } from "@/lib/db";
-import { boardOrigin, boardPort, databasePath, stateDir } from "@/lib/db/paths";
-import { listProjects } from "@/lib/db/projects";
-import {
-  getStatuslineDefault,
-  getStatuslineOverride,
-  setStatuslineDefault,
-  setStatuslineOverride,
-  statuslineEnabledFor,
-} from "@/lib/db/settings";
+import { getLocalState, getStore } from "@/lib/core";
+import { getDb } from "@/lib/db";
+import type { LocalState } from "@/lib/core/local-state";
+import type { TaskStore } from "@/lib/core/port";
+import type { Project } from "@/lib/core/types";
+import { databasePath, boardPort } from "@/lib/db/paths";
 import { digestFor, statuslineSegment, terminalDigest } from "@/lib/digest";
-import { IS_WINDOWS, bunExecutable, openerCommand } from "@/lib/runtime";
+import { applyScan, executeImport, planImport, scanProject } from "@/lib/import";
+import { gitAvailable } from "@/lib/git";
+import { importPlanText, importResultText, repoListText, scanText } from "@/lib/format/repos";
+import { machineLabel, setMachineLabel } from "@/lib/machine";
+import { pollForToken, requestDeviceCode } from "@/lib/auth";
+import { clearCredentials, readCredentials } from "@/lib/credentials";
+import { currentMode } from "@/lib/core";
+import { getSetting, setSetting } from "@/lib/db/settings";
+import { ensureUp, isBuilt, isUp, stopBoard } from "@/lib/board-process";
+import { boardHome, projectUrl } from "@/lib/permalink";
+import { IS_WINDOWS, PLUGIN_ROOT, openerCommand } from "@/lib/runtime";
 import { inspectInstallation, installIntegration } from "@/lib/integration";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PID_FILE = join(stateDir(), "board.pid");
-const LOG_FILE = join(stateDir(), "board.log");
+const ROOT = PLUGIN_ROOT;
 
-export async function isUp(timeoutMs = 500): Promise<boolean> {
-  try {
-    const response = await fetch(`${boardOrigin()}/api/health`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-function readPid(): number | null {
-  try {
-    const pid = Number.parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
-    if (!Number.isFinite(pid)) return null;
-    process.kill(pid, 0); // throws if the process is gone
-    return pid;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * A built app starts in well under a second; an unbuilt one has to compile on
- * demand, so `dev` is the honest fallback rather than a silent failure.
- */
-function chooseScript(): "start" | "dev" {
-  return existsSync(join(ROOT, ".next", "BUILD_ID")) ? "start" : "dev";
-}
-
-export async function ensureUp(): Promise<{ url: string; started: boolean }> {
-  if (await isUp()) return { url: boardOrigin(), started: false };
-
-  // A checkout straight from the marketplace has no node_modules and no build.
-  ensureDependencies();
-  mkdirSync(stateDir(), { recursive: true });
-  const log = openSync(LOG_FILE, "a");
-  const script = chooseScript();
-
-  const child = spawn(bunExecutable(), ["run", script], {
-    cwd: ROOT,
-    detached: true,
-    stdio: ["ignore", log, log],
-    // Next reads PORT; passing it here keeps shell syntax out of package.json,
-    // which is the only way the scripts work on Windows too.
-    env: { ...process.env, PORT: String(boardPort()), CLAUDE_TASKS_PORT: String(boardPort()) },
-  });
-  child.unref();
-  writeFileSync(PID_FILE, String(child.pid ?? ""));
-
-  // A cold `next dev` compiles the first page on request, so the budget is
-  // generous; a built server answers on the first or second poll.
-  const deadline = Date.now() + (script === "dev" ? 90_000 : 30_000);
-  while (Date.now() < deadline) {
-    if (await isUp(1000)) return { url: boardOrigin(), started: true };
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  throw new Error(
-    `The board did not answer on ${boardOrigin()} after starting it with "bun run ${script}". See ${LOG_FILE}.`,
-  );
-}
-
-function stop(): string {
-  const pid = readPid();
-  if (!pid) return "The board is not running.";
-
-  if (IS_WINDOWS) {
-    // There are no process groups to signal here, and Next leaves a child of its
-    // own behind: /T takes the tree with it.
-    spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
-  } else {
-    process.kill(-pid, "SIGTERM"); // the whole detached group, not just bun
-  }
-
-  try {
-    unlinkSync(PID_FILE);
-  } catch {
-    /* already gone */
-  }
-  return `Stopped (pid ${pid}).`;
-}
+const store: TaskStore = getStore();
+const state: LocalState = getLocalState();
 
 function openInBrowser(target: string): void {
   const opener = openerCommand(target);
@@ -132,7 +54,7 @@ function openInBrowser(target: string): void {
  * throws and never prints a diagnostic: an empty line is the correct output for
  * "no project here", "turned off" and "the database is busy" alike.
  */
-function statusline(rest: string[], cwd: string): number {
+async function statusline(rest: string[], cwd: string): Promise<number> {
   const cwdIndex = rest.indexOf("--cwd");
   if (cwdIndex !== -1) {
     const explicit = rest[cwdIndex + 1];
@@ -145,9 +67,9 @@ function statusline(rest: string[], cwd: string): number {
 
   if (!verb) {
     try {
-      const digest = digestFor(cwd);
+      const digest = await digestFor(store, state, cwd);
       if (!digest || !digest.open.length) return 0;
-      if (!statuslineEnabledFor(connect(), digest.project.slug)) return 0;
+      if (!state.statuslineEnabledFor(digest.project.slug)) return 0;
       console.log(statuslineSegment(digest));
     } catch {
       /* Never the reason someone's status bar breaks. */
@@ -155,19 +77,17 @@ function statusline(rest: string[], cwd: string): number {
     return 0;
   }
 
-  const db = connect();
-
   if (verb === "status") {
-    const digest = digestFor(cwd, db);
-    console.log(`Default: ${getStatuslineDefault(db) ? "on" : "off"}`);
+    const digest = await digestFor(store, state, cwd);
+    console.log(`Default: ${state.statuslineDefault() ? "on" : "off"}`);
     if (!digest) {
       console.log("This directory belongs to no project, so nothing would show here anyway.");
       return 0;
     }
-    const override = getStatuslineOverride(db, digest.project.slug);
+    const override = state.statuslineOverride(digest.project.slug);
     console.log(
       `${digest.project.name}: ${override === null ? "inherits the default" : override ? "on" : "off"} ` +
-        `→ ${statuslineEnabledFor(db, digest.project.slug) ? "shows" : "hidden"}`,
+        `→ ${state.statuslineEnabledFor(digest.project.slug) ? "shows" : "hidden"}`,
     );
     return 0;
   }
@@ -182,12 +102,12 @@ function statusline(rest: string[], cwd: string): number {
       console.error("--global is the default. Use on or off.");
       return 2;
     }
-    setStatuslineDefault(db, verb === "on");
+    state.setStatuslineDefault(verb === "on");
     console.log(`The statusline is ${verb} for every project that has no opinion of its own.`);
     return 0;
   }
 
-  const digest = digestFor(cwd, db);
+  const digest = await digestFor(store, state, cwd);
   if (!digest) {
     console.error(
       "This directory belongs to no project. Use --global to set the default, " +
@@ -195,12 +115,314 @@ function statusline(rest: string[], cwd: string): number {
     );
     return 1;
   }
-  setStatuslineOverride(db, digest.project.slug, verb === "default" ? null : verb === "on");
+  state.setStatuslineOverride(digest.project.slug, verb === "default" ? null : verb === "on");
   console.log(
     verb === "default"
-      ? `${digest.project.name} now follows the default (${getStatuslineDefault(db) ? "on" : "off"}).`
+      ? `${digest.project.name} now follows the default (${state.statuslineDefault() ? "on" : "off"}).`
       : `The statusline is ${verb} for ${digest.project.name}.`,
   );
+  return 0;
+}
+
+/* -------------------------------------------------------------- checkouts */
+
+/** The project a command is about: named, or the one this directory belongs to. */
+async function projectFor(name: string | undefined, cwd: string): Promise<Project> {
+  if (name) {
+    const found = await store.getProject(name);
+    if (found) return found;
+    const known = (await store.listProjects()).map((p) => p.slug).join(", ") || "none";
+    throw new Error(`No project "${name}". The ones that exist: ${known}.`);
+  }
+  const here = state.resolve(cwd)[0];
+  if (!here) throw new Error(`${cwd} belongs to no project. Name one, or run this from inside a checkout.`);
+  return (await store.getProject(here.projectSlug))!;
+}
+
+function flag(rest: string[], name: string): string | undefined {
+  const index = rest.indexOf(name);
+  if (index === -1) return undefined;
+  const value = rest[index + 1];
+  return value && !value.startsWith("--") ? value : undefined;
+}
+
+function positional(rest: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i]!;
+    if (arg.startsWith("--")) {
+      // The flags that take a value swallow the next argument.
+      if (["--into", "--only", "--label"].includes(arg)) i += 1;
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
+/**
+ * Asks before cloning.
+ *
+ * The point of the prompt is that everything below it happens outside any
+ * directory this plugin owns. A non-interactive stdin answers no rather than
+ * yes: a script that meant to clone says --yes, and one that did not should not
+ * discover the difference afterwards.
+ */
+async function confirmed(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false;
+  process.stdout.write(`${question} [y/N] `);
+  const answer = await new Promise<string>((resolve) => {
+    process.stdin.setEncoding("utf8");
+    process.stdin.once("data", (chunk) => resolve(String(chunk).trim().toLowerCase()));
+    process.stdin.resume();
+  });
+  process.stdin.pause();
+  return answer === "y" || answer === "yes";
+}
+
+async function repos(rest: string[], cwd: string): Promise<number> {
+  state.register();
+  const project = await projectFor(positional(rest)[0], cwd);
+
+  if (rest.includes("--scan")) {
+    if (!gitAvailable()) {
+      console.error("git is not on PATH, so there is nothing to ask about these checkouts.");
+      return 1;
+    }
+    const scan = scanProject(state, project);
+    console.log(scanText(scan, project.name));
+    if (rest.includes("--dry-run")) {
+      console.log("\nNothing written. Run without --dry-run to record it.");
+      return 0;
+    }
+    const written = await applyScan(store, state, project, scan);
+    console.log(`\nRecorded ${written} repositor${written === 1 ? "y" : "ies"}.`);
+    return 0;
+  }
+
+  const paths = state.listPaths(project.id);
+  const presentAt = (repo: { id: string }) => paths.find((p) => p.repoId === repo.id)?.path ?? null;
+  console.log(`${project.name}\n${repoListText(await store.listRepos(project.id), presentAt)}`);
+  return 0;
+}
+
+async function base(rest: string[], cwd: string): Promise<number> {
+  state.register();
+  const args = positional(rest);
+  // `todos base <path>` inside a project, or `todos base <project> <path>`.
+  const [first, second] = args;
+  const project = await projectFor(second ? first : undefined, cwd);
+  const path = second ?? first;
+
+  if (!path) {
+    const recorded = state.projectBase(project.id);
+    console.log(recorded ? `${project.name} lives under ${recorded} on ${machineLabel()}.`
+                         : `No base directory recorded for ${project.name} on ${machineLabel()}.`);
+    return recorded ? 0 : 1;
+  }
+  console.log(`${project.name} lives under ${state.setProjectBase(project.id, path)} on ${machineLabel()}.`);
+  return 0;
+}
+
+async function importCommand(rest: string[], cwd: string): Promise<number> {
+  if (!gitAvailable()) {
+    console.error("git is not on PATH, so nothing can be cloned.");
+    return 1;
+  }
+  state.register();
+
+  const into = flag(rest, "--into");
+  const only = flag(rest, "--only")?.split(",").map((k) => k.trim()).filter(Boolean);
+  const all = rest.includes("--all");
+  const args = positional(rest);
+
+  const projects = all ? await store.listProjects() : [await projectFor(args[0], cwd)];
+  let failures = 0;
+
+  for (const project of projects) {
+    const recorded = state.projectBase(project.id);
+    const chosen = into ?? recorded;
+    if (!chosen) {
+      console.error(`No base directory for ${project.slug}. Pass --into <dir>, or set one with "todos base".`);
+      failures += 1;
+      continue;
+    }
+
+    const plan = planImport(
+      project,
+      await store.listRepos(project.id),
+      state.listPaths(project.id).map((p) => p.path),
+      resolve(chosen),
+      { only },
+    );
+    console.log(importPlanText(plan));
+
+    const willClone = plan.entries.some((e) => e.action === "clone");
+    if (!willClone) {
+      // Still worth recording the base: it is what makes the next import work.
+      executeImport(state, plan);
+      console.log("");
+      continue;
+    }
+    if (!rest.includes("--yes") && !(await confirmed("\nClone these?"))) {
+      console.log("Nothing was written.");
+      continue;
+    }
+
+    const outcomes = executeImport(state, plan);
+    console.log(`\n${importResultText(plan, outcomes)}\n`);
+    failures += outcomes.filter((o) => o.result === "failed").length;
+  }
+
+  return failures ? 1 : 0;
+}
+
+/**
+ * Turns a thrown message into a line and an exit code.
+ *
+ * These commands fail for ordinary reasons — a project that is not there, a
+ * directory that belongs to nothing — and a stack trace is the wrong way to say
+ * so to someone in a terminal.
+ */
+async function guard(run: () => number | Promise<number>): Promise<number> {
+  try {
+    return await run();
+  } catch (error) {
+    console.error((error as Error).message);
+    return 1;
+  }
+}
+
+function machine(rest: string[]): number {
+  let id = state.register();
+  const label = positional(rest)[0];
+  if (label) {
+    setMachineLabel(label);
+    id = state.register();
+  }
+  console.log(`${machineLabel()}  ${id}`);
+  return 0;
+}
+
+/* ----------------------------------------------------------------- account */
+
+const DEFAULT_API = "https://api.todos.dev";
+
+/**
+ * Signs this machine in.
+ *
+ * Prints a code and waits. Everything about that is on purpose: the person
+ * approving it is doing so in a browser we do not control, on a device that may
+ * not be this one, and what comes back belongs to this computer rather than to
+ * them — so the token can be revoked here without touching anything else they
+ * are signed in to.
+ */
+async function login(rest: string[]): Promise<number> {
+  const db = getDb();
+  const api = flag(rest, "--api") ?? getSetting(db, "cloud.api") ?? DEFAULT_API;
+
+  const device = await requestDeviceCode(api);
+  console.log(`\n  ${device.userCode}\n`);
+  console.log(`Open ${device.verificationUriComplete ?? device.verificationUri} and approve that code.`);
+  if (rest.includes("--open") && device.verificationUriComplete) openInBrowser(device.verificationUriComplete);
+  console.log("Waiting…");
+
+  const credentials = await pollForToken(api, device, {
+    onSlowDown: (interval) => console.log(`(asked to slow down; checking every ${interval}s)`),
+  });
+
+  setSetting(db, "cloud.api", api);
+  setSetting(db, "mode", "cloud");
+
+  // Which workspace to work in. One is not a choice worth asking about.
+  const me = await fetch(`${api.replace(/\/+$/, "")}/v1/me`, {
+    headers: { authorization: `Bearer ${credentials.accessToken}` },
+  }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+  const workspaces: Array<{ slug: string; name: string }> = me?.workspaces ?? [];
+  const chosen = flag(rest, "--workspace") ?? workspaces[0]?.slug;
+  if (chosen) setSetting(db, "cloud.workspace", chosen);
+
+  console.log(`\nSigned in as ${me?.email ?? "this device"}.`);
+  if (workspaces.length > 1) {
+    console.log(`Workspaces: ${workspaces.map((w) => w.slug).join(", ")} — using ${chosen}.`);
+    console.log(`Change it with "todos workspace <slug>".`);
+  }
+  console.log(`Cloud mode is on. "todos mode local" goes back to the database on this machine,`);
+  console.log(`which is untouched and exactly as you left it.`);
+  return 0;
+}
+
+function logout(): number {
+  const db = getDb();
+  clearCredentials();
+  setSetting(db, "mode", "local");
+  console.log("Signed out. Back on the local database, exactly as you left it.");
+  return 0;
+}
+
+async function whoami(): Promise<number> {
+  const credentials = readCredentials();
+  if (!credentials) {
+    console.log(`Not signed in. Mode: ${currentMode()}.`);
+    return 1;
+  }
+  const db = getDb();
+  const api = credentials.api || getSetting(db, "cloud.api") || DEFAULT_API;
+  const me = await fetch(`${api.replace(/\/+$/, "")}/v1/me`, {
+    headers: { authorization: `Bearer ${credentials.accessToken}` },
+  }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+  if (!me) {
+    console.log(`Signed in to ${api}, but it did not answer. Token expires ${new Date(credentials.expiresAt).toISOString()}.`);
+    return 1;
+  }
+  console.log(`${me.email} at ${api}`);
+  console.log(`Workspace: ${getSetting(db, "cloud.workspace") ?? "(none chosen)"}`);
+  console.log(`Mode: ${currentMode()} · machine: ${machineLabel()}`);
+  return 0;
+}
+
+/**
+ * Switches between the local database and the hosted one.
+ *
+ * Says out loud that nothing is merged, because that is the single most
+ * confusable thing about this: the two are separate places, and moving between
+ * them changes which one you are looking at rather than combining them.
+ */
+function mode(rest: string[]): number {
+  const db = getDb();
+  const wanted = positional(rest)[0];
+  if (!wanted) {
+    console.log(currentMode());
+    return 0;
+  }
+  if (wanted !== "local" && wanted !== "cloud") {
+    console.error('Usage: todos mode [local | cloud]');
+    return 2;
+  }
+  if (wanted === "cloud" && !readCredentials()) {
+    console.error('Not signed in. Run "todos login" first.');
+    return 1;
+  }
+  setSetting(db, "mode", wanted);
+  console.log(
+    wanted === "cloud"
+      ? "Cloud mode. Your local tasks stay where they are; nothing is copied either way."
+      : "Local mode. The database on this machine, exactly as you left it.",
+  );
+  return 0;
+}
+
+function workspace(rest: string[]): number {
+  const db = getDb();
+  const wanted = positional(rest)[0];
+  if (!wanted) {
+    console.log(getSetting(db, "cloud.workspace") ?? "(none chosen)");
+    return 0;
+  }
+  setSetting(db, "cloud.workspace", wanted);
+  console.log(`Working in ${wanted}.`);
   return 0;
 }
 
@@ -240,17 +462,17 @@ async function doctor(cwd: string): Promise<number> {
 
   // The database.
   const dbPath = databasePath();
+  let known: Project[] = [];
   try {
-    const db = connect();
-    const projects = listProjects(db);
-    ok("database", `${dbPath} — ${projects.length} project${projects.length === 1 ? "" : "s"}`);
+    known = await store.listProjects();
+    ok("database", `${dbPath} — ${known.length} project${known.length === 1 ? "" : "s"}`);
   } catch (error) {
     fail("database", `${dbPath} — ${(error as Error).message}`);
   }
 
   // Where we are.
   try {
-    const digest = digestFor(cwd);
+    const digest = await digestFor(store, state, cwd);
     if (digest) ok("this directory", `${digest.project.name} (${digest.open.length} open)`);
     else warn("this directory", `${cwd} belongs to no project yet.`);
   } catch (error) {
@@ -259,7 +481,7 @@ async function doctor(cwd: string): Promise<number> {
 
   // The build, which is the difference between the board opening now and in
   // twenty seconds.
-  if (existsSync(join(ROOT, ".next", "BUILD_ID"))) ok("board build", "built — starts immediately");
+  if (isBuilt()) ok("board build", "built — starts immediately");
   else warn("board build", `not built. Run "bun run build" in ${ROOT} so it stops falling back to dev.`);
 
   // Dependencies.
@@ -269,9 +491,29 @@ async function doctor(cwd: string): Promise<number> {
     warn("dependencies", `missing — the MCP server installs them itself on first start.`);
   }
 
+  // git, which everything about checkouts depends on.
+  if (gitAvailable()) ok("git", "available");
+  else warn("git", "not on PATH — todos repos and todos import need it.");
+
+  // Repositories recorded but not checked out here.
+  try {
+    state.register();
+    let absent = 0;
+    for (const project of known) {
+      const paths = state.listPaths(project.id);
+      absent += (await store.listRepos(project.id)).filter(
+        (repo) => !paths.some((p) => p.repoId === repo.id),
+      ).length;
+    }
+    if (absent) warn("checkouts", `${absent} recorded repositor${absent === 1 ? "y is" : "ies are"} not on this machine. "todos import" clones them.`);
+    else ok("checkouts", `all recorded repositories are here (${machineLabel()})`);
+  } catch (error) {
+    fail("checkouts", (error as Error).message);
+  }
+
   // The port.
   const up = await isUp();
-  if (up) ok("board", `up at ${boardOrigin()}`);
+  if (up) ok("board", `up at ${boardHome()}`);
   else ok("board", `not running (it starts on demand, port ${boardPort()})`);
 
   console.log(`todos doctor — ${ROOT}\n\n${lines.join("\n")}\n`);
@@ -321,6 +563,17 @@ const USAGE = `todos — the manual tasks only you can do
   todos open [path]        open the board, at a path if you give one
   todos statusline         print the status-bar segment for this directory
   todos statusline on|off|default|status [--global]
+  todos repos [project]    the repositories this project is made of
+  todos repos --scan       describe the project from the checkouts it already has
+  todos base [project] <dir>   where this project lives on this machine
+  todos import [project] --into <dir>   clone what is missing, adopt what is here
+  todos import --all --into <dir> [--only a,b] [--yes]
+  todos machine [label]    this machine's identity
+  todos login [--api <url>] [--open]   sign this machine in to the hosted service
+  todos logout             sign out and go back to the local database
+  todos whoami             who this machine is signed in as
+  todos mode [local|cloud] which of the two you are working in
+  todos workspace [slug]   which workspace, in cloud mode
   todos doctor             check everything that has to be true for this to work
   todos setup              install the stable terminal launcher
   todos setup --check --json  inspect integrations without changing files
@@ -333,15 +586,15 @@ async function main(): Promise<void> {
 
   switch (command ?? "board") {
     case "board": {
-      const digest = digestFor(cwd);
+      const digest = await digestFor(store, state, cwd);
       const { url } = await ensureUp();
-      const target = digest ? `${url}/p/${digest.project.slug}` : url;
+      const target = digest ? projectUrl(digest.project.slug) : url;
       openInBrowser(target);
       console.log(digest ? `${terminalDigest(digest)}\n\n${target}` : `No project for ${cwd}.\n\n${target}`);
       return;
     }
     case "pending": {
-      const digest = digestFor(cwd);
+      const digest = await digestFor(store, state, cwd);
       if (!digest) {
         console.log(`${cwd} belongs to no project. Claude registers one the first time it leaves you something.`);
         process.exitCode = 1;
@@ -352,7 +605,7 @@ async function main(): Promise<void> {
     }
     case "status": {
       const up = await isUp();
-      console.log(up ? `Up at ${boardOrigin()}` : "Stopped.");
+      console.log(up ? `Up at ${boardHome()}` : "Stopped.");
       process.exitCode = up ? 0 : 1;
       return;
     }
@@ -362,10 +615,10 @@ async function main(): Promise<void> {
       return;
     }
     case "stop":
-      console.log(stop());
+      console.log(stopBoard());
       return;
     case "url":
-      console.log(boardOrigin());
+      console.log(boardHome());
       return;
     case "open": {
       const { url } = await ensureUp();
@@ -375,7 +628,34 @@ async function main(): Promise<void> {
       return;
     }
     case "statusline":
-      process.exitCode = statusline(rest, cwd);
+      process.exitCode = await statusline(rest, cwd);
+      return;
+    case "repos":
+      process.exitCode = await guard(() => repos(rest, cwd));
+      return;
+    case "base":
+      process.exitCode = await guard(() => base(rest, cwd));
+      return;
+    case "import":
+      process.exitCode = await guard(() => importCommand(rest, cwd));
+      return;
+    case "machine":
+      process.exitCode = await guard(() => machine(rest));
+      return;
+    case "login":
+      process.exitCode = await guard(() => login(rest));
+      return;
+    case "logout":
+      process.exitCode = await guard(() => logout());
+      return;
+    case "whoami":
+      process.exitCode = await guard(() => whoami());
+      return;
+    case "mode":
+      process.exitCode = await guard(() => mode(rest));
+      return;
+    case "workspace":
+      process.exitCode = await guard(() => workspace(rest));
       return;
     case "doctor":
       process.exitCode = await doctor(cwd);
