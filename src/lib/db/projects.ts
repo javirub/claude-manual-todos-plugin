@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { isWithin } from "./paths";
+import { canonical, isWithin } from "./paths";
 
 import type { Sqlite } from "./driver";
 import type { Owner, Project, ProjectPath, ProjectRelation, ProjectTheme } from "./types";
@@ -88,7 +88,10 @@ function hydrate(db: Sqlite, row: ProjectRow): Project {
 
 export function listPaths(db: Sqlite, projectId: number): ProjectPath[] {
   return db
-    .prepare("SELECT id, path, label, role FROM project_paths WHERE project_id = ? ORDER BY path")
+    .prepare(
+      `SELECT id, path, label, role, repo_id AS repoId, machine_id AS machineId, real_path AS realPath
+       FROM project_paths WHERE project_id = ? ORDER BY path`,
+    )
     .all<ProjectPath>(projectId);
 }
 
@@ -149,23 +152,37 @@ export interface ResolvedProjectPath {
  * — a cwd that merely sits above a registered path — come last and are flagged.
  */
 export function resolveProjectsByPath(db: Sqlite, cwd: string): ResolvedProjectPath[] {
-  const rows = db
-    .prepare("SELECT id, project_id, path, label, role FROM project_paths ORDER BY LENGTH(path) DESC")
-    .all<{ id: number; project_id: number; path: string; label: string | null; role: string | null }>();
+  const rows = db.prepare(`SELECT id, project_id, path, label, role, repo_id AS repoId, machine_id AS machineId, real_path AS realPath
+       FROM project_paths ORDER BY LENGTH(path) DESC`).all<{
+      id: number; project_id: number; path: string; label: string | null; role: string | null;
+      repoId: number | null; machineId: string | null; realPath: string | null;
+    }>();
+
+  // One realpath call for the whole resolution, not one per row. Canonicalising
+  // each stored path here would put a syscall per registered checkout on the
+  // status line's path, which runs on every render; the stored side was
+  // canonicalised once, when it was written.
+  const here = resolve(cwd);
+  const hereReal = canonical(here);
+  const contains = (row: { path: string; realPath: string | null }) =>
+    isWithin(row.path, here) || isWithin(row.realPath ?? row.path, hereReal);
 
   const found: ResolvedProjectPath[] = [];
   const seen = new Set<number>();
   for (const row of rows) {
-    if (!isWithin(row.path, cwd) || seen.has(row.project_id)) continue;
+    if (!contains(row) || seen.has(row.project_id)) continue;
     const project = getProject(db, row.project_id);
     if (!project) continue;
     seen.add(row.project_id);
-    found.push({ project, path: { id: row.id, path: row.path, label: row.label, role: row.role } });
+    found.push({ project, path: { id: row.id, path: row.path, label: row.label, role: row.role,
+        repoId: row.repoId, machineId: row.machineId, realPath: row.realPath } });
   }
   if (found.length) return found;
 
   // See the note below: nothing contains the cwd, so look inside it instead.
-  const below = rows.filter((row) => isWithin(cwd, row.path));
+  const below = rows.filter(
+    (row) => isWithin(here, row.path) || isWithin(hereReal, row.realPath ?? row.path),
+  );
   if (!below.length) return [];
   if (new Set(below.map((row) => row.project_id)).size > 1) return [];
   const row = below[below.length - 1]!;
@@ -174,7 +191,8 @@ export function resolveProjectsByPath(db: Sqlite, cwd: string): ResolvedProjectP
   return [
     {
       project,
-      path: { id: row.id, path: row.path, label: row.label, role: row.role },
+      path: { id: row.id, path: row.path, label: row.label, role: row.role,
+        repoId: row.repoId, machineId: row.machineId, realPath: row.realPath },
       viaDescendant: true,
     },
   ];
@@ -189,15 +207,21 @@ export function resolveProjectsByPath(db: Sqlite, cwd: string): ResolvedProjectP
  * clothes.
  */
 export function resolveProjectByPath(db: Sqlite, cwd: string): ResolvedProjectPath | null {
-  const rows = db
-    .prepare("SELECT id, project_id, path, label, role FROM project_paths ORDER BY LENGTH(path) DESC")
-    .all<{ id: number; project_id: number; path: string; label: string | null; role: string | null }>();
+  const rows = db.prepare(`SELECT id, project_id, path, label, role, repo_id AS repoId, machine_id AS machineId, real_path AS realPath
+       FROM project_paths ORDER BY LENGTH(path) DESC`).all<{
+      id: number; project_id: number; path: string; label: string | null; role: string | null;
+      repoId: number | null; machineId: string | null; realPath: string | null;
+    }>();
+
+  const here = resolve(cwd);
+  const hereReal = canonical(here);
 
   for (const row of rows) {
-    if (isWithin(row.path, cwd)) {
+    if (isWithin(row.path, here) || isWithin(row.realPath ?? row.path, hereReal)) {
       const project = getProject(db, row.project_id);
       if (project) {
-        return { project, path: { id: row.id, path: row.path, label: row.label, role: row.role } };
+        return { project, path: { id: row.id, path: row.path, label: row.label, role: row.role,
+        repoId: row.repoId, machineId: row.machineId, realPath: row.realPath } };
       }
     }
   }
@@ -217,7 +241,9 @@ export function resolveProjectByPath(db: Sqlite, cwd: string): ResolvedProjectPa
    * Only when every registered path below belongs to the **same** project: at
    * `~/Proyectos` every project is below, and picking one would be arbitrary.
    */
-  const below = rows.filter((row) => isWithin(cwd, row.path));
+  const below = rows.filter(
+    (row) => isWithin(here, row.path) || isWithin(hereReal, row.realPath ?? row.path),
+  );
   if (!below.length) return null;
   if (new Set(below.map((row) => row.project_id)).size > 1) return null;
 
@@ -228,7 +254,8 @@ export function resolveProjectByPath(db: Sqlite, cwd: string): ResolvedProjectPa
   if (!project) return null;
   return {
     project,
-    path: { id: row.id, path: row.path, label: row.label, role: row.role },
+    path: { id: row.id, path: row.path, label: row.label, role: row.role,
+      repoId: row.repoId, machineId: row.machineId, realPath: row.realPath },
     viaDescendant: true,
   };
 }
@@ -318,15 +345,43 @@ export function createProject(db: Sqlite, input: CreateProjectInput): Project {
 export function addProjectPath(
   db: Sqlite,
   projectId: number,
-  input: { path: string; label?: string | null; role?: string | null },
+  input: {
+    path: string;
+    label?: string | null;
+    role?: string | null;
+    repoId?: number | null;
+    machineId?: string | null;
+  },
 ): void {
+  const path = resolve(input.path);
+  // Canonicalised once, here, so that resolving a working directory stays a
+  // string comparison. A symlinked checkout root is otherwise invisible: the cwd
+  // Claude Code reports and the path we stored are the same directory spelled two
+  // ways, and `where_am_i` answers "no project" without being able to say why.
+  const realPath = canonical(path);
+  const now = nowIso();
   db.prepare(
     // The conflict target is the pair, so attaching a path that another project
     // already has adds it here instead of taking it from them.
-    `INSERT INTO project_paths(project_id, path, label, role) VALUES (?,?,?,?)
-     ON CONFLICT(project_id, path) DO UPDATE SET label = COALESCE(excluded.label, project_paths.label),
-                                                 role = COALESCE(excluded.role, project_paths.role)`,
-  ).run(projectId, resolve(input.path), input.label ?? null, input.role ?? null);
+    `INSERT INTO project_paths(project_id, path, label, role, repo_id, machine_id, real_path, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(project_id, path) DO UPDATE SET label      = COALESCE(excluded.label, project_paths.label),
+                                                 role       = COALESCE(excluded.role, project_paths.role),
+                                                 repo_id    = COALESCE(excluded.repo_id, project_paths.repo_id),
+                                                 machine_id = COALESCE(excluded.machine_id, project_paths.machine_id),
+                                                 real_path  = excluded.real_path,
+                                                 updated_at = excluded.updated_at`,
+  ).run(
+    projectId,
+    path,
+    input.label ?? null,
+    input.role ?? null,
+    input.repoId ?? null,
+    input.machineId ?? null,
+    realPath === path ? null : realPath,
+    now,
+    now,
+  );
   recordEvent(db, "updated", "project", projectId);
 }
 

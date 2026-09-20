@@ -210,3 +210,70 @@ ALTER TABLE project_paths_new RENAME TO project_paths;
 CREATE INDEX idx_project_paths_project ON project_paths(project_id);
 CREATE INDEX idx_project_paths_path ON project_paths(path);
 `;
+
+export const MIGRATION_4 = `
+-- Migration 4 — a project's repositories are portable; its checkouts are not.
+--
+-- \`project_paths\` holds absolute paths on the machine that wrote them. That is
+-- the right answer for resolving a working directory and the wrong one for every
+-- other question: move to a second computer and the rows describe directories
+-- that do not exist, with no way to rebuild what they pointed at. The paths are
+-- the only record of a project's repositories, and they are a record that does
+-- not travel.
+--
+-- So the two ideas separate. A \`project_repos\` row is the repository itself —
+-- its remote, its branch, and where it sits relative to the others — and it means
+-- the same thing on every machine. A \`project_paths\` row is one checkout of one
+-- repository on one machine, and it means nothing anywhere else.
+--
+-- \`relative_path\` is nullable on purpose. It says "this repository lives under
+-- the project's base directory, here", which is true of the usual case and false
+-- of the one migration 3 went out of its way to allow: a k3s-cluster serving
+-- three products has no place under any one of them. NULL means the checkout is
+-- bound by hand or by matching its remote, and import leaves it alone.
+
+CREATE TABLE machines (
+  id           TEXT PRIMARY KEY,
+  label        TEXT NOT NULL,
+  os           TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+
+CREATE TABLE project_repos (
+  id             INTEGER PRIMARY KEY,
+  project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  key            TEXT NOT NULL,
+  remote_url     TEXT,
+  default_branch TEXT,
+  relative_path  TEXT,
+  label          TEXT,
+  role           TEXT,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  UNIQUE (project_id, key)
+);
+
+CREATE INDEX idx_project_repos_project ON project_repos(project_id);
+CREATE INDEX idx_project_repos_remote  ON project_repos(remote_url);
+
+CREATE TABLE project_bases (
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  machine_id TEXT NOT NULL,
+  base_path  TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, machine_id)
+);
+
+-- A NULL machine_id means "this machine, not claimed yet": the identifier lives
+-- in a file, so no pure-SQL migration can write it here. machineId() claims these
+-- rows the first time it runs, and until then they resolve exactly as before.
+ALTER TABLE project_paths ADD COLUMN repo_id    INTEGER REFERENCES project_repos(id) ON DELETE SET NULL;
+ALTER TABLE project_paths ADD COLUMN machine_id TEXT;
+ALTER TABLE project_paths ADD COLUMN real_path  TEXT;
+ALTER TABLE project_paths ADD COLUMN created_at TEXT;
+ALTER TABLE project_paths ADD COLUMN updated_at TEXT;
+
+CREATE INDEX idx_project_paths_real    ON project_paths(real_path);
+CREATE INDEX idx_project_paths_machine ON project_paths(machine_id);
+`;

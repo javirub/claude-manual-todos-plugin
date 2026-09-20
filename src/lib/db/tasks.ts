@@ -520,6 +520,11 @@ export function deleteTask(db: Sqlite, taskId: number): void {
   recordEvent(db, "deleted", "task", taskId);
 }
 
+/** Which task a step belongs to, for the callers that only hold the step. */
+export function taskIdOfStep(db: Sqlite, stepId: number): number | null {
+  return db.prepare("SELECT task_id FROM steps WHERE id = ?").get<{ task_id: number }>(stepId)?.task_id ?? null;
+}
+
 export function deleteStep(db: Sqlite, stepId: number): void {
   const row = db.prepare("SELECT task_id FROM steps WHERE id = ?").get<{ task_id: number }>(stepId);
   db.prepare("DELETE FROM steps WHERE id = ?").run(stepId);
