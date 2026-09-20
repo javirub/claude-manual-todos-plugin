@@ -30,14 +30,18 @@ describe("the hooks are wired", () => {
 });
 
 describe("release-please writes where we think it does", () => {
-  test("the manifest names the last tagged version", () => {
-    // Not the version in package.json: that is where release-please writes to,
-    // and this is where it reads from. Seeding it with an untagged version makes
-    // the first release pull request propose a number that already exists.
+  test("the manifest and the manifests agree", () => {
+    // Between releases these are the same number: release-please writes both in
+    // the same pull request. They diverge only when somebody edits a version by
+    // hand, which is now a mistake rather than a procedure.
+    //
+    // Compared against package.json rather than against git tags on purpose.
+    // The first version of this test asked git for the tag list and passed
+    // locally and failed on all three runners, because actions/checkout fetches
+    // no tags — it was testing the checkout depth, not the repository.
     const manifest = JSON.parse(readFileSync(".release-please-manifest.json", "utf8"));
-    const tags = spawnSync("git", ["tag", "--list", "v*"], { encoding: "utf8" })
-      .stdout.trim().split("\n").filter(Boolean);
-    expect(tags).toContain(`v${manifest["."]}`);
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    expect(manifest["."]).toBe(pkg.version);
   });
 
   test("the todos entry is the one it bumps by index", () => {

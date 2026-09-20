@@ -69,23 +69,28 @@ describe("normaliseRemote", () => {
 
 describe("layout", () => {
   test("the common ancestor of several checkouts is their base", () => {
-    expect(commonAncestor([`${resolve("/x")}/Proyectos/costia/frontend`, `${resolve("/x")}/Proyectos/costia/backend`]))
-      .toBe(`${resolve("/x")}/Proyectos/costia`);
+    // join, never string concatenation: commonAncestor splits on the platform
+    // separator, and "D:\\x" + "/Proyectos" is a path no Windows API agrees with.
+    // Written with slashes first, it passed everywhere except the runner.
+    const root = resolve("/x");
+    expect(commonAncestor([join(root, "Proyectos/costia/frontend"), join(root, "Proyectos/costia/backend")]))
+      .toBe(join(root, "Proyectos/costia"));
   });
 
   test("one checkout's base is its parent, not itself", () => {
     // Otherwise importing would place the repository inside a directory named
     // after it: ~/Proyectos/frontend/frontend.
-    const base = commonAncestor([`${resolve("/x")}/Proyectos/costia/frontend`]);
-    expect(base).toBe(`${resolve("/x")}/Proyectos/costia`);
+    const root = resolve("/x");
+    const base = commonAncestor([join(root, "Proyectos/costia/frontend")]);
+    expect(base).toBe(join(root, "Proyectos/costia"));
   });
 
   test("relativeTo refuses a path that is not under the base", () => {
     const root = resolve("/x");
-    expect(relativeTo(`${root}/Proyectos`, `${root}/Proyectos/costia/api`)).toBe("costia/api");
-    expect(relativeTo(`${root}/Proyectos`, `${root}/Otros/costia`)).toBe(null);
+    expect(relativeTo(join(root, "Proyectos"), join(root, "Proyectos/costia/api"))).toBe("costia/api");
+    expect(relativeTo(join(root, "Proyectos"), join(root, "Otros/costia"))).toBe(null);
     // A sibling whose name starts the same is not inside it.
-    expect(relativeTo(`${root}/repos/costia`, `${root}/repos/costia-training`)).toBe(null);
+    expect(relativeTo(join(root, "repos/costia"), join(root, "repos/costia-training"))).toBe(null);
   });
 });
 
