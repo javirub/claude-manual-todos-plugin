@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { useTranslations } from "next-intl";
 
-import type { Owner, TaskSummary } from "@/lib/db/types";
+import type { Owner, TaskSummary } from "@/lib/core/types";
 import { BUCKET_ORDER, bucketOf, type DueBucket } from "@/lib/format/dates";
 import { boardHref, type BoardParams } from "@/lib/url";
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import type { Locale } from "@/lib/db/settings";
-import type { Project } from "@/lib/db/types";
+import type { Project } from "@/lib/core/types";
 import { boardHref, type BoardParams } from "@/lib/url";
 
 import { LanguageSwitcher } from "./LanguageSwitcher";
