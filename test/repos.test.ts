@@ -21,9 +21,16 @@ afterEach(() => {
 });
 
 function tempDir(): string {
-  // realpath because macOS hands out /var/folders and resolves it through
-  // /private, which is the very confusion these tests are about.
-  const directory = realpathSync(mkdtempSync(join(tmpdir(), "todos repos ")));
+  // realpath.native, not realpath, and both halves of that matter.
+  //
+  // macOS hands out /var/folders and resolves it through /private, which is the
+  // very confusion these tests are about. And Windows hands the same directory
+  // out as C:\Users\RUNNER~1\... through one API and C:\Users\runneradmin\...
+  // through another — git returns the long form, mkdtemp the short one, and a
+  // plain string comparison between them fails on the runner and nowhere else.
+  // `.native` is what collapses the two, which is why canonical() in db/paths
+  // uses it too.
+  const directory = realpathSync.native(mkdtempSync(join(tmpdir(), "todos repos ")));
   temporary.push(directory);
   return directory;
 }
