@@ -306,7 +306,16 @@ function machine(rest: string[]): number {
 
 /* ----------------------------------------------------------------- account */
 
-const DEFAULT_API = "https://api.todos.dev";
+/**
+ * The hosted service, when `--api` does not say otherwise.
+ *
+ * It is also the OAuth issuer, so it is the string the tokens are checked
+ * against rather than only somewhere to send requests. The placeholder this
+ * replaced pointed at a domain belonging to someone else, which is the worst
+ * kind of default: a device code posted to a stranger, and nothing that looks
+ * like a failure.
+ */
+const DEFAULT_API = "https://api.manualtasks.dev";
 
 /**
  * Signs this machine in.
