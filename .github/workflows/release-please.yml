@@ -1,0 +1,38 @@
+name: Release
+
+# The commits decide the version. This opens a pull request carrying the bump and
+# the changelog; merging that pull request is the release. Nothing here picks a
+# number, which is the whole point — the old workflow raised the patch whenever
+# the version in package.json was already tagged, so the same code released twice
+# got two numbers and nobody knew which until CI had run.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two runs would read the same tags and write the same branch.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: open or land the release pull request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # A pull request opened with GITHUB_TOKEN starts no workflow run, and this
+      # is the one pull request that rewrites all three manifests — exactly what
+      # manifest.test.ts exists to check. Worse than unchecked: with required
+      # status checks a pull request that never reports can never be merged, so
+      # the release would not be unverified, it would be stuck.
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
