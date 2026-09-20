@@ -24,11 +24,16 @@ to the room, editable.
 
 <br>
 
-- A **project** can span several repositories (`project_paths`). That is what
-  makes `costia/frontend`, `costia/backend` and `costia/docs-site` one project,
-  and what answers "which project am I in?": the longest registered path that
-  contains the working directory wins, so a repository claims its own
-  subdirectories back from the superproject above it.
+- A **project** can span several repositories. What a project is made of lives in
+  `project_repos` — a remote, a branch and a place in the layout, all of which
+  mean the same thing on every computer. Where those repositories are *checked
+  out* lives in `project_paths`, and means nothing on any other machine. That
+  split is what lets a project be rebuilt somewhere it has never been.
+- "Which project am I in?" is answered from the checkouts: the longest registered
+  path that contains the working directory wins, so a repository claims its own
+  subdirectories back from the superproject above it. Paths are compared through
+  their canonical form as well as the one you typed, so a checkout reached through
+  a symlink still resolves.
 - A **task** can belong to several projects with a single shared state, and can
   be linked to another with `blocks` or `relates` — across projects too.
 - A task's state is **derived**: it is done when every one of its steps is. There
@@ -36,6 +41,53 @@ to the room, editable.
 - Every step remembers **who closed it**. The ones Claude resolved in code stay
   visible, marked as such, rather than disappearing: seeing what is already done
   is half the context for why the rest is still open.
+
+</details>
+
+<details>
+<summary><b>Moving to another computer</b> — repositories, bases and import</summary>
+
+<br>
+
+A project's paths describe *this* machine. Move to another one and they point at
+directories that do not exist, with no record of what they used to hold. So two
+more things are recorded alongside them:
+
+- **`project_repos`** — one row per repository: a key that is the same everywhere
+  (`frontend`), its remote, its branch, and where it sits relative to the others.
+  `relative_path` is empty for a repository shared between projects, which no
+  import can place under any one of them.
+- **`project_bases`** — the directory a project's repositories sit under, per
+  machine. Yours might be `~/Proyectos/costia` here and `/srv/costia` on a server.
+
+`todos repos --scan` fills both in from checkouts you already have: it asks git
+what each registered path is, takes the deepest directory containing all of them
+as the base, and keeps what is left as the layout. Nothing to type.
+
+`todos import <project> --into <dir>` rebuilds it elsewhere. It prints what it
+would do and waits for a yes, because everything it does happens outside any
+directory this plugin owns:
+
+```text
+todos import costia-training --into ~/Proyectos
+
+  clone        frontend    ~/Proyectos/costia/frontend
+  adopt        backend     ~/Proyectos/costia/backend
+  skip         secrets     no remote recorded, so there is nothing to clone from
+
+  Clone these? [y/N]
+```
+
+A destination that already holds the same repository is **adopted**, not cloned.
+One that holds something else is reported and stepped around — the cost of
+guessing wrong there is someone's uncommitted work. Re-running after a failure
+resumes. With no terminal to ask, it refuses rather than assuming yes; `--yes`
+is how a script says it meant it.
+
+Machines identify themselves with a value generated once and kept in
+`$XDG_STATE_HOME/claude-tasks/machine.json`. Not the hostname, which changes and
+gets reused, and not a MAC address, which belongs to an interface rather than a
+computer.
 
 </details>
 
