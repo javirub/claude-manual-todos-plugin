@@ -31,7 +31,7 @@
         "productivity",
         "dashboard"
       ],
-      "license": "MIT",
+      "license": "BUSL-1.1",
       "source": "./",
       "homepage": "https://github.com/javirub/claude-manual-todos-plugin",
       "repository": "https://github.com/javirub/claude-manual-todos-plugin"

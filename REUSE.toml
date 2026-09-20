@@ -1,0 +1,22 @@
+# Machine-readable licensing, so a scanner does not need a header in every file.
+# Per-file SPDX comments were deliberately left out: in this codebase the comments
+# are the documentation, and three lines of boilerplate above each one costs more
+# than it explains.
+version = 1
+SPDX-PackageName = "todos"
+SPDX-PackageSupplier = "javirub"
+
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "2026 javirub"
+SPDX-License-Identifier = "BUSL-1.1"
+
+[[annotations]]
+path = "LICENSE-MIT"
+SPDX-FileCopyrightText = "2026 javirub"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "LICENSES/Apache-2.0.txt"
+SPDX-FileCopyrightText = "2004 The Apache Software Foundation"
+SPDX-License-Identifier = "Apache-2.0"
