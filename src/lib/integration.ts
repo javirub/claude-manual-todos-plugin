@@ -1,13 +1,12 @@
-import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { stateDir } from "./db/paths";
-import { IS_WINDOWS, bunExecutable } from "./runtime";
+import { canonical, stateDir } from "./db/paths";
+import { atomicWrite } from "./fs";
+import { IS_WINDOWS, PLUGIN_ROOT, bunExecutable } from "./runtime";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const ROOT = PLUGIN_ROOT;
 const MARKER = "Manual todos managed launcher";
 
 export interface InstallationOptions {
@@ -63,14 +62,10 @@ function present(path: string): boolean {
   try { lstatSync(path); return true; } catch { return false; }
 }
 
-/** Windows spells the same directory `C:\Users\RUNNER~1\…` through one API and
- * `C:\Users\runneradmin\…` through another, and a different case is still the
- * same file; macOS resolves /tmp through /private. Canonicalise what exists, and
- * fall back to a plain resolve for a path that does not exist yet. */
+/** Two spellings of one directory. The `windows` flag is a parameter rather than
+ * the platform because `installationOptions` already carries one and the tests
+ * set it; the canonicalisation itself is shared with the path resolver. */
 function samePath(left: string, right: string, windows: boolean): boolean {
-  const canonical = (value: string) => {
-    try { return realpathSync.native(value); } catch { return resolve(value); }
-  };
   const a = canonical(left);
   const b = canonical(right);
   return windows ? a.toLowerCase() === b.toLowerCase() : a === b;
@@ -96,13 +91,6 @@ export function inspectInstallation(options = installationOptions()) {
     registered: registration !== null,
     runtimeAvailable: !!registration && existsSync(join(registration.root, "bin/todos.ts")) && existsSync(registration.bun),
   };
-}
-
-function atomicWrite(path: string, value: string, mode = 0o600): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  writeFileSync(temporary, value, { mode });
-  renameSync(temporary, path);
 }
 
 function version(root: string): string {

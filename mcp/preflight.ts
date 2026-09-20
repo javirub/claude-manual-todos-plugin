@@ -8,12 +8,11 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-import { bunExecutable } from "../src/lib/runtime";
+import { PLUGIN_ROOT, bunExecutable } from "../src/lib/runtime";
 
-export const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+export { PLUGIN_ROOT };
 
 /** A dependency that is imported at module scope, so its absence is fatal. */
 const SENTINEL = join(PLUGIN_ROOT, "node_modules", "@modelcontextprotocol", "server", "package.json");

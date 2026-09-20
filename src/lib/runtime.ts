@@ -1,6 +1,18 @@
 import { platform } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const IS_WINDOWS = platform() === "win32";
+
+/**
+ * The checkout we are running from, which is what `CLAUDE_PLUGIN_ROOT` points at
+ * when Claude Code starts us.
+ *
+ * Here rather than computed again in each caller: three modules used to derive it
+ * from their own `import.meta.url`, which is three chances for a file to move and
+ * silently start resolving somewhere else.
+ */
+export const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 declare const Bun: unknown;
 
