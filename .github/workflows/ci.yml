@@ -10,6 +10,17 @@ on:
     branches: [main]
   pull_request:
 
+# Read is all this needs. Declared rather than inherited: the repository default
+# is what a new workflow silently gets, and it is wider than this.
+permissions:
+  contents: read
+
+# A pull request that is pushed to twice used to run the matrix twice, on three
+# operating systems, with the first result already irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: ${{ matrix.os }}

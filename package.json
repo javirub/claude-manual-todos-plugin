@@ -2,6 +2,7 @@
   "name": "todos",
   "version": "1.1.0",
   "private": true,
+  "license": "BUSL-1.1",
   "type": "module",
   "bin": {
     "todos": "bin/todos.ts"
@@ -16,7 +17,9 @@
     "seed:demo": "bun scripts/seed-demo.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint:messages": "eloqnt lint"
+    "lint:messages": "eloqnt lint",
+    "hooks": "git config core.hooksPath .githooks",
+    "hooks:off": "git config --unset core.hooksPath"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",

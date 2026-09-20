@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Milliseconds only. Whatever goes here is paid on every commit, so it holds the
+# checks that are free and catch the mistakes that are silent: three manifests
+# that stopped agreeing, a link to a document that was renamed, a database file
+# staged by accident. Everything heavier waits for pre-push.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+# `--amend --no-edit` with nothing staged, for one.
+git diff --cached --quiet && exit 0
+
+bad=0
+while IFS= read -r file; do
+  case "$file" in
+    *.db|*.db-wal|*.db-shm|*.sqlite|*.sqlite3|.env|.env.*|*.pem|*.key)
+      echo "pre-commit: $file does not belong in this repository." >&2; bad=1 ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACM)
+[ "$bad" -eq 0 ] || exit 1
+
+command -v bun >/dev/null 2>&1 || { echo "pre-commit: no bun on PATH; skipped."; exit 0; }
+
+# Not the real board. Every test below opens a database, and the default path is
+# the one with the user's own tasks in it.
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/todos-hook.XXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+export CLAUDE_TASKS_DB="$scratch/tasks.db"
+export XDG_STATE_HOME="$scratch/state"
+
+bun test test/manifest.test.ts test/docs.test.ts test/paths.test.ts

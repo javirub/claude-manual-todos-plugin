@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A security problem
+    url: https://github.com/javirub/claude-manual-todos-plugin/security/advisories/new
+    about: Report it privately instead. See SECURITY.md.
