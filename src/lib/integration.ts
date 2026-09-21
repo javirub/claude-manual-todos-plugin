@@ -7,6 +7,16 @@ import { atomicWrite } from "./fs";
 import { IS_WINDOWS, PLUGIN_ROOT, bunExecutable } from "./runtime";
 
 const ROOT = PLUGIN_ROOT;
+/**
+ * How the launcher says it is ours, written into a file in the user's own bin directory
+ * and compared line for line when deciding whether we may overwrite it.
+ *
+ * It still says "Manual todos" after the product was renamed to Manual Tasks, and it has
+ * to: this string is an identifier in somebody else's filesystem, not a display name.
+ * Changing it makes every launcher already installed look like a stranger's file, which
+ * `inspectInstallation` then refuses to touch -- so the rename would present as
+ * `todos` simply stopping being updatable, with nothing saying why.
+ */
 const MARKER = "Manual todos managed launcher";
 
 export interface InstallationOptions {

@@ -1,6 +1,6 @@
 <div align="center">
 
-# Manual todos
+# Manual Tasks
 
 **Keep the work only you can finish out of forgotten chat messages.**
 

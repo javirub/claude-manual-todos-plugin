@@ -1,6 +1,6 @@
 {
   "name": "todos",
-  "displayName": "Manual todos",
+  "displayName": "Manual Tasks",
   "description": "Records, orders and tracks the manual tasks only the user can do: what is left waiting in a console, a dashboard or an account Claude cannot reach. Everything lives in SQLite and is shown on a local board with a visual identity of its own per project, so a project can span several repositories and a task can cut across several projects.",
   "version": "1.1.0",
   "author": {
