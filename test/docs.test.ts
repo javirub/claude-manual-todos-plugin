@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 test("the quick start and guides link to existing local documents and images", () => {
-  for (const file of ["README.md", "docs/setup.md", "docs/reference.md", "docs/development.md"]) {
+  for (const file of ["README.md", "CONTRIBUTING.md", "SECURITY.md", "docs/setup.md", "docs/reference.md", "docs/development.md"]) {
     const markdown = readFileSync(file, "utf8");
     for (const match of markdown.matchAll(/]\(([^\s)]+)\)/g)) {
       const target = match[1]!;

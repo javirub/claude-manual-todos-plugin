@@ -1,0 +1,85 @@
+name: Pull request
+
+# Squash merge means the title of this pull request is the commit message that
+# lands on main, and release-please reads those commits to decide the version.
+# The commit-msg hook rehearses that grammar; `--no-verify` exists, and a title
+# is typed into a browser where no hook has ever run. This is where it is
+# decided.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: the pull request title is a conventional commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # A bot's title is not ours to style. It passes *inside* the job rather
+      # than skipping it: a required check that is skipped never reports a
+      # status at all, and the pull request can then never be merged.
+      - name: Check the title
+        if: github.event.pull_request.user.type != 'Bot'
+        # Through the environment, never through ${{ }} inside the script. A
+        # title is text a stranger wrote, and ${{ }} is textual substitution
+        # performed before any shell exists.
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$TITLE" | bash scripts/commit-lint.sh -
+
+  commits:
+    name: the commits read like commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Advisory, and deliberately so: squash merge throws these messages away,
+      # so a branch whose intermediate commits are scruffy costs nothing. They
+      # are annotated rather than failed.
+      - name: Read them
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+          while IFS= read -r sha; do
+            if ! git log -1 --format=%B "$sha" | bash scripts/commit-lint.sh - 2>/tmp/why; then
+              echo "::warning::$(git log -1 --format=%s "$sha") — $(head -1 /tmp/why)"
+            fi
+          done < <(git rev-list --no-merges "$BASE..$HEAD")
+
+  cla:
+    name: the contributor licence agreement is accepted
+    runs-on: ubuntu-latest
+    steps:
+      # CONTRIBUTING.md claims this is checked automatically. It was not, and a
+      # promise nobody keeps is worse than no promise: this is the cheapest way
+      # to make the sentence true. The template carries the line; the author
+      # ticks it; this reads it.
+      - name: Look for the tick
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          WHO: ${{ github.event.pull_request.author_association }}
+          BOT: ${{ github.event.pull_request.user.type }}
+        run: |
+          set -euo pipefail
+          if [ "$WHO" = "OWNER" ] || [ "$BOT" = "Bot" ]; then
+            echo "The owner holds the copyright; bots contribute no copyrightable work."
+            exit 0
+          fi
+          if printf '%s' "$BODY" | grep -qF '[x] I agree to the Contributor Licence Agreement'; then
+            echo "Accepted."
+            exit 0
+          fi
+          echo "::error::Tick the CLA box in the pull request description. See .github/CLA.md."
+          exit 1

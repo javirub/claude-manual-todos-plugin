@@ -12,7 +12,7 @@
   "plugins": [
     {
       "name": "todos",
-      "displayName": "Manual todos",
+      "displayName": "Manual Tasks",
       "description": "The manual steps only you can do, recorded per project in SQLite and worked through on a board that looks different for every project. One project can span several repositories; one task can cut across several projects.",
       "version": "1.1.0",
       "author": {
@@ -31,7 +31,7 @@
         "productivity",
         "dashboard"
       ],
-      "license": "MIT",
+      "license": "BUSL-1.1",
       "source": "./",
       "homepage": "https://github.com/javirub/claude-manual-todos-plugin",
       "repository": "https://github.com/javirub/claude-manual-todos-plugin"

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Checks the message before the commit object exists.
+#
+# This blocks, unlike the Claude Code hooks elsewhere in this estate, and the
+# difference is causality rather than severity: those run PostToolUse, after the
+# commit already happened, where refusing undoes nothing. Here there is nothing
+# yet to undo — the message stays in .git/COMMIT_EDITMSG and the hook prints the
+# command that reopens it. Same principle: act where acting still helps.
+set -euo pipefail
+
+# $2 says where the message came from. A merge or squash message is git's own.
+case "${2-}" in merge|squash) exit 0 ;; esac
+
+exec "$(git rev-parse --show-toplevel)/scripts/commit-lint.sh" "$1"

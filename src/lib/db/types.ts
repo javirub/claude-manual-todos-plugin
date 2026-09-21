@@ -19,6 +19,12 @@ export interface ProjectPath {
   path: string;
   label: string | null;
   role: string | null;
+  /** The repository this checkout is of, once one has been recorded. */
+  repoId: number | null;
+  /** Which computer this checkout is on. NULL on rows written before machines existed. */
+  machineId: string | null;
+  /** The canonical spelling, stored only when it differs from `path`. */
+  realPath: string | null;
 }
 
 export interface Owner {

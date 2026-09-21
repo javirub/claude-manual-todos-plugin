@@ -4,7 +4,7 @@ description: Set up the optional terminal CLI, task status line and local board 
 disable-model-invocation: true
 ---
 
-# Welcome to Manual todos
+# Welcome to Manual Tasks
 
 Configure what the user chooses. Speak the language of this conversation, including
 question labels and the closing summary. Treat `$ARGUMENTS` and prior answers as

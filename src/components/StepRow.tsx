@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { useOptimistic, useTransition } from "react";
 
 import { toggleStep } from "@/app/actions";
-import type { Step } from "@/lib/db/types";
+import type { Step } from "@/lib/core/types";
 
 import { Copyable } from "./Copyable";
 import { Markdown } from "./Markdown";

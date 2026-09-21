@@ -2,14 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { getDb } from "@/lib/db";
-import {
-  isLocale,
-  setLocale,
-  setStatuslineOverride,
-  type Locale,
-} from "@/lib/db/settings";
-import { setStepsDone, setTaskDone, updateTask } from "@/lib/db/tasks";
+import { getLocalState, getStore } from "@/lib/core";
+import { isLocale, type Locale } from "@/lib/db/settings";
 
 /**
  * The board's writes. They go through the same query layer the MCP server uses,
@@ -17,24 +11,24 @@ import { setStepsDone, setTaskDone, updateTask } from "@/lib/db/tasks";
  * only `done_by` differs, and that difference is shown rather than smoothed away.
  */
 
-export async function toggleStep(stepId: number, done: boolean): Promise<void> {
-  setStepsDone(getDb(), [stepId], done, "user");
+export async function toggleStep(stepId: string, done: boolean): Promise<void> {
+  await getStore().setStepsDone([stepId], done, "user");
   revalidatePath("/", "layout");
 }
 
-export async function toggleTask(taskId: number, done: boolean): Promise<void> {
-  setTaskDone(getDb(), taskId, done, "user");
+export async function toggleTask(taskId: string, done: boolean): Promise<void> {
+  await getStore().setTaskDone(taskId, done, "user");
   revalidatePath("/", "layout");
 }
 
-export async function setTaskDue(taskId: number, dueAt: string | null): Promise<void> {
-  updateTask(getDb(), taskId, { dueAt: dueAt || null });
+export async function setTaskDue(taskId: string, dueAt: string | null): Promise<void> {
+  await getStore().updateTask(taskId, { dueAt: dueAt || null });
   revalidatePath("/", "layout");
 }
 
 export async function setBoardLocale(locale: Locale): Promise<void> {
   if (!isLocale(locale)) return;
-  setLocale(getDb(), locale);
+  await getStore().setLocale(locale);
   // The whole shell changes language, and the agent reads this setting too.
   revalidatePath("/", "layout");
 }
@@ -47,6 +41,8 @@ export async function setBoardLocale(locale: Locale): Promise<void> {
  * their status bar. `todos statusline off` is the same write from the terminal.
  */
 export async function setStatuslineForProject(slug: string, enabled: boolean): Promise<void> {
-  setStatuslineOverride(getDb(), slug, enabled);
+  // Machine state, never the store: which terminal shows what is not a fact
+  // about the project, and in cloud mode there is no status bar to speak of.
+  getLocalState().setStatuslineOverride(slug, enabled);
   revalidatePath("/", "layout");
 }

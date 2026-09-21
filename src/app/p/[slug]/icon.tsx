@@ -1,5 +1,4 @@
-import { getDb } from "@/lib/db";
-import { getProject } from "@/lib/db/projects";
+import { getStore } from "@/lib/core";
 import { NEUTRAL_THEME } from "@/lib/theme/tokens";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +16,7 @@ export const size = { width: 32, height: 32 };
  */
 export default async function Icon({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const theme = getProject(getDb(), slug)?.theme ?? NEUTRAL_THEME;
+  const theme = (await getStore().getProject(slug))?.theme ?? NEUTRAL_THEME;
   const ink = `oklch(0.155 ${theme.neutralChroma} ${theme.hue})`;
   const accent = `oklch(0.74 ${theme.chroma} ${theme.hue})`;
 

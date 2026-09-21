@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
-import type { Task } from "@/lib/db/types";
+import type { Task } from "@/lib/core/types";
 import { bucketOf } from "@/lib/format/dates";
 import { boardHref, type BoardParams } from "@/lib/url";
 

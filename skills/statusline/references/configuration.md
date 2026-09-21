@@ -31,7 +31,10 @@ dependencies are necessary. Read `bin/launcher.mjs` if you need its exact interf
   stdin and renders `Model · ctx 42% · ◆ Project · 3 open`. Missing model/context
   fields are omitted. Keep its plain, compact style unless asked otherwise.
 - **User-owned script:** back it up outside the plugin cache before editing it.
-  Add or update a block marked `Manual todos segment`, using the script's existing
+  Add or update a block marked `Manual todos segment` — that wording is an anchor in
+  the user's own file, not a product name, so it keeps the old spelling after the
+  rename to Manual Tasks; changing it orphans the block already in their script.
+  Use the script's existing
   language and conventions. Match its palette, separators, spacing and line
   placement. Preserve all existing information and ANSI resets. Do not replace
   the whole bar with the compact default.

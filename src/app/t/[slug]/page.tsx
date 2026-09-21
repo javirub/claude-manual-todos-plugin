@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 
-import { getDb } from "@/lib/db";
-import { getTask } from "@/lib/db/tasks";
+import { getStore } from "@/lib/core";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +10,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function TaskPermalink({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const task = getTask(getDb(), slug);
+  const task = await getStore().getTask(slug);
   if (!task) notFound();
 
   const primary = task.projects.find((p) => p.isPrimary) ?? task.projects[0];

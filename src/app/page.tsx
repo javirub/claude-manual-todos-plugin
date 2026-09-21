@@ -15,7 +15,7 @@ export default async function AllProjectsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = readParams(await searchParams);
-  const { projects, tasks, counts, owners, selected, totals, locale, statusline } = loadBoard(params);
+  const { projects, tasks, counts, owners, selected, totals, locale, statusline } = await loadBoard(params);
   const t = await getTranslations("list");
   const tRail = await getTranslations("rail");
 

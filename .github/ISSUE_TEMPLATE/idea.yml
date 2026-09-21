@@ -1,0 +1,16 @@
+name: An idea
+description: Something the plugin should do and does not
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem, before any solution
+      description: What you were trying to do when you wanted this.
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: What it might look like
+      description: Optional. A rough shape is more useful than a precise design.

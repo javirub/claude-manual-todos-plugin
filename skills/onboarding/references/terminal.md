@@ -35,6 +35,8 @@ comes first; never remove or rename the other command.
 If its directory is absent from PATH, enabling the CLI includes adding that
 directory to the user's PATH. Inspect the actual shell and existing config first.
 On bash/zsh, add one marked `# Manual todos PATH` block to the appropriate user
+(that marker keeps the old spelling on purpose: it is an anchor in the user's own
+profile rather than a product name, and renaming it would leave a second block)
 startup file, preserving its contents and existing equivalent entries. Use fish's
 `fish_add_path` for fish. On Windows, append the directory once to the User PATH
 using `[Environment]::SetEnvironmentVariable`, preserving every existing entry;

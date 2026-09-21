@@ -1,7 +1,6 @@
 import { getRequestConfig } from "next-intl/server";
 
-import { getDb } from "@/lib/db";
-import { getLocale } from "@/lib/db/settings";
+import { getStore } from "@/lib/core";
 
 /**
  * The locale is not in the URL and not in a cookie: it lives in the same SQLite
@@ -10,7 +9,7 @@ import { getLocale } from "@/lib/db/settings";
  * cookie would let the board and the agent disagree.
  */
 export default getRequestConfig(async () => {
-  const locale = getLocale(getDb());
+  const locale = await getStore().getLocale();
   const messages = (await import(`../../messages/${locale}.json`)).default;
   return { locale, messages };
 });

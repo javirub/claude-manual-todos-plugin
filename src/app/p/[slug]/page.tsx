@@ -19,7 +19,7 @@ export default async function ProjectPage({
 }) {
   const { slug } = await routeParams;
   const params = readParams(await searchParams);
-  const { projects, active, tasks, counts, owners, selected, totals, locale, statusline } = loadBoard(params, slug);
+  const { projects, active, tasks, counts, owners, selected, totals, locale, statusline } = await loadBoard(params, slug);
   if (!active) notFound();
 
 

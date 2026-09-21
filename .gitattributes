@@ -1,0 +1,25 @@
+# Line endings, decided by the repository rather than by whoever cloned it.
+#
+# `core.autocrlf` is a per-machine git setting: it keeps one checkout honest and
+# says nothing about anyone else's, or about a CI runner's. Declaring it here
+# moves the decision into the repository, where it reaches every clone.
+#
+# It matters here because CI runs on Windows. A carriage return in a file a shell
+# reads is not cosmetic: `#!/bin/sh` followed by CR fails with `bad interpreter`,
+# which names the interpreter and not the real problem.
+* text=auto eol=lf
+
+# Run by a shell, on every platform. `bin/mcp.sh` is what CI executes under
+# `env -i bash`, and the hooks are what git executes before every commit.
+*.sh text eol=lf
+.githooks/* text eol=lf
+
+# Windows-native scripts need the opposite and break without it.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaries, so git never tries to "fix" bytes that are not text.
+*.png binary
+*.jpg binary
+*.webp binary
+*.db binary

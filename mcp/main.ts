@@ -11,47 +11,31 @@
  * where_am_i reports. See skills/manual-tasks/SKILL.md.
  */
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod";
 
-import { getDb } from "@/lib/db";
-import { boardOrigin } from "@/lib/db/paths";
-import { LOCALES, LOCALE_LABELS, getLocale, setLocale, type Locale } from "@/lib/db/settings";
-import {
-  HueTooCloseError,
-  addProjectPath,
-  removeProjectPath,
-  createProject,
-  getProject,
-  linkProjects,
-  listProjectRelations,
-  listProjects,
-  resolveProjectsByPath,
-  setProjectTheme,
-  suggestFreeHue,
-  updateProject,
-  upsertOwner,
-} from "@/lib/db/projects";
-import {
-  addSteps,
-  createTask,
-  deleteStep,
-  deleteTask,
-  getTask,
-  linkTasks,
-  listTasks,
-  setStepsDone,
-  setTaskDone,
-  updateStep,
-  updateTask,
-} from "@/lib/db/tasks";
+import { getLocalState, getStore } from "@/lib/core";
+import { ensureUp } from "@/lib/board-process";
+import { projectUrl, taskUrl } from "@/lib/permalink";
+import { applyScan, executeImport, planImport, scanProject } from "@/lib/import";
+import { detectRepo, gitAvailable, normaliseRemote } from "@/lib/git";
+import { importPlanText, importResultText, repoListText, scanText } from "@/lib/format/repos";
+import { LOCALES, LOCALE_LABELS, type Locale } from "@/lib/db/settings";
+import { HueTooCloseError } from "@/lib/db/projects";
 import { PLUGIN_NAME, PLUGIN_VERSION } from "@/lib/manifest";
-import type { Project } from "@/lib/db/types";
+import type { Project } from "@/lib/core/types";
 import { projectDetailText, projectLine, taskDetailText, taskListText } from "@/lib/format/text";
 
-const db = getDb();
+const store = getStore();
+const state = getLocalState();
+
+// Claims the path rows written before machines existed, and records that this
+// computer is one. Cheap, idempotent, and it has to happen before anything reads
+// a checkout — see the note in src/lib/machine.ts.
+state.register();
 
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }] });
 
@@ -67,28 +51,28 @@ const notOnDisk = (path: string) => !existsSync(path);
  * which language to write it in. It is repeated on every where_am_i so it cannot
  * be missed halfway through a long session.
  */
-function languageLine(): string {
-  const locale = getLocale(db);
+async function languageLine(): Promise<string> {
+  const locale = await store.getLocale();
   return `Write task content in ${LOCALE_LABELS[locale]} (${locale}) — titles, summaries, step bodies, reasons and phase names.`;
 }
 
-function requireProject(ref: string | undefined, cwd: string | undefined): Project {
+async function requireProject(ref: string | undefined, cwd: string | undefined): Promise<Project> {
   if (ref) {
-    const found = getProject(db, ref);
+    const found = await store.getProject(ref);
     if (found) return found;
-    const known = listProjects(db).map((p) => p.slug).join(", ") || "none";
+    const known = (await store.listProjects()).map((p) => p.slug).join(", ") || "none";
     throw new Error(`No project "${ref}". The ones that exist: ${known}.`);
   }
   const here = cwd ?? process.cwd();
-  const resolved = resolveProjectsByPath(db, here);
-  if (resolved.length === 1) return resolved[0]!.project;
+  const resolved = state.resolve(here);
+  if (resolved.length === 1) return ((await store.getProject(resolved[0]!.projectSlug)))!;
   if (resolved.length > 1) {
     // A shared repository. Picking one would decide, silently, which board the
     // task lands on — and the wrong one is invisible until someone goes looking
     // for a task that is not there.
     throw new Error(
       `${here} belongs to ${resolved.length} projects: ` +
-        `${resolved.map((r) => r.project.slug).join(", ")}. ` +
+        `${resolved.map((r) => r.projectSlug).join(", ")}. ` +
         `Name the one you mean with \`project\`, and use \`alsoProjects\` if the task really belongs to more than one.`,
     );
   }
@@ -98,6 +82,11 @@ function requireProject(ref: string | undefined, cwd: string | undefined): Proje
       `or attach the path to an existing one with add_project_path before recording anything.`,
   );
 }
+
+const presentAt = (projectId: string) => {
+  const paths = state.listPaths(projectId);
+  return (repo: { id: string }) => paths.find((p) => p.repoId === repo.id)?.path ?? null;
+};
 
 const themeSchema = z.object({
   mode: z.enum(["dark", "light", "auto"]).optional()
@@ -145,39 +134,44 @@ server.registerTool(
   },
   async ({ cwd }) => {
     const where = cwd ?? process.cwd();
-    const all = resolveProjectsByPath(db, where);
+    const all = state.resolve(where);
     if (all.length > 1) {
+      const blocks: string[] = [];
+      for (const r of all) {
+        const found = ((await store.getProject(r.projectSlug)))!;
+        const open = await store.listTasks({ projectId: found.id, state: "open" });
+        blocks.push(
+          `${projectDetailText(found, state.listPaths(found.id), notOnDisk)}\n  here as: ${r.path.path}${r.path.role ? ` (${r.path.role})` : ""}\n` +
+            `Open (${open.length}):\n${taskListText(open)}`,
+        );
+      }
       return text(
         `${where} belongs to ${all.length} projects — it is shared, so there is no single answer.\n` +
-          `${languageLine()}\n\n` +
-          all
-            .map((r) => `${projectDetailText(r.project, notOnDisk)}\n  here as: ${r.path.path}${r.path.role ? ` (${r.path.role})` : ""}\n` +
-              `Open (${listTasks(db, { projectId: r.project.id, state: "open" }).length}):\n` +
-              `${taskListText(listTasks(db, { projectId: r.project.id, state: "open" }))}`)
-            .join("\n\n") +
+          `${await languageLine()}\n\n${blocks.join("\n\n")}` +
           `\n\nRecording anything here needs \`project\` naming which one, and \`alsoProjects\` when it belongs to several.`,
       );
     }
     const resolved = all[0] ?? null;
     if (!resolved) {
-      const projects = listProjects(db);
+      const projects = await store.listProjects();
       return text(
-        `${where} belongs to no project.\n${languageLine()}\n\n` +
+        `${where} belongs to no project.\n${await languageLine()}\n\n` +
           (projects.length
             ? `Projects that already exist:\n${projects.map((p) => `  ${projectLine(p)}`).join("\n")}\n\n` +
               `If this path is another repository of one of them, attach it with add_project_path ` +
               `(one project spans several repos). If it is a new project, create it with create_project: ` +
-              `you will have to give it its own identity, and the widest free hue right now is ${suggestFreeHue(db)}°.`
+              `you will have to give it its own identity, and the widest free hue right now is ${await store.suggestFreeHue()}°.`
             : `There are no projects yet. Create the first one with create_project. ` +
-              `A free hue to start from: ${suggestFreeHue(db)}°.`),
+              `A free hue to start from: ${await store.suggestFreeHue()}°.`),
       );
     }
 
-    const { project, path } = resolved;
-    const open = listTasks(db, { projectId: project.id, state: "open" });
-    const relations = listProjectRelations(db, project.id);
+    const { path } = resolved;
+    const project = (await store.getProject(resolved.projectSlug))!;
+    const open = await store.listTasks({ projectId: project.id, state: "open" });
+    const relations = await store.listProjectRelations(project.id);
     const lines = [
-      projectDetailText(project, notOnDisk),
+      projectDetailText(project, state.listPaths(project.id), notOnDisk),
       resolved.viaDescendant
         // Resolved by inference rather than registration. Said first because it
         // is fixable in one call, and because until someone fixes it the session
@@ -185,10 +179,21 @@ server.registerTool(
         ? `\n${where} is NOT attached to this project — ${path.path} is, below it. ` +
           `Attach it with add_project_path so it resolves directly from here.`
         : `\nYou are in ${path.path}${path.role ? ` (${path.role})` : ""}.`,
-      languageLine(),
+      await languageLine(),
     ];
     if (relations.length) {
       lines.push(`Related to: ${relations.map((r) => `${r.project.name} (${r.kind})`).join(", ")}.`);
+    }
+    // A repository recorded but not checked out here is the difference between
+    // "this project has three repos" and "this machine has one of them". Said
+    // here because this is the tool that runs before anyone goes looking.
+    const here = presentAt(project.id);
+    const absent = (await store.listRepos(project.id)).filter((repo) => !here(repo));
+    if (absent.length) {
+      lines.push(
+        `${absent.length} of this project's repositories are not on this machine ` +
+          `(${absent.map((r) => r.key).join(", ")}). import_project clones them.`,
+      );
     }
     lines.push(`\nOpen (${open.length}):\n${taskListText(open)}`);
     return text(lines.join("\n"));
@@ -203,9 +208,9 @@ server.registerTool(
     inputSchema: z.object({ includeArchived: z.boolean().optional() }),
   },
   async ({ includeArchived }) => {
-    const projects = listProjects(db, includeArchived ?? false);
+    const projects = await store.listProjects({ includeArchived: includeArchived ?? false });
     if (!projects.length) return text("There are no projects.");
-    return text(projects.map((p) => projectDetailText(p, notOnDisk)).join("\n\n"));
+    return text(projects.map((p) => projectDetailText(p, state.listPaths(p.id), notOnDisk)).join("\n\n"));
   },
 );
 
@@ -236,14 +241,14 @@ server.registerTool(
   },
   async (input) => {
     try {
-      const project = createProject(db, {
+      const project = await store.createProject({
         name: input.name,
         summary: input.summary,
         paths: input.paths,
         owners: input.owners,
         theme: input.theme,
       });
-      return text(`Created.\n\n${projectDetailText(project)}`);
+      return text(`Created.\n\n${projectDetailText(project, state.listPaths(project.id))}`);
     } catch (error) {
       if (error instanceof HueTooCloseError) return text(error.message);
       throw error;
@@ -265,9 +270,10 @@ server.registerTool(
     }),
   },
   async ({ project, owners, ...patch }) => {
-    const found = requireProject(project, undefined);
-    for (const owner of owners ?? []) upsertOwner(db, found.id, owner);
-    return text(projectDetailText(updateProject(db, found.id, patch)));
+    const found = await requireProject(project, undefined);
+    for (const owner of owners ?? []) await store.upsertOwner(found.id, owner);
+    const updated = await store.updateProject(found.id, patch);
+    return text(projectDetailText(updated, state.listPaths(updated.id)));
   },
 );
 
@@ -289,9 +295,9 @@ server.registerTool(
     }),
   },
   async ({ project, path, role, label }) => {
-    const found = requireProject(project, undefined);
-    addProjectPath(db, found.id, { path, role, label });
-    return text(projectDetailText(getProject(db, found.id)!, notOnDisk));
+    const found = await requireProject(project, undefined);
+    state.addPath(found.id, { path, role, label });
+    return text(projectDetailText((await store.getProject(found.id))!, state.listPaths(found.id), notOnDisk));
   },
 );
 
@@ -309,14 +315,14 @@ server.registerTool(
     }),
   },
   async ({ project, path }) => {
-    const found = requireProject(project, undefined);
-    if (!removeProjectPath(db, found.id, path)) {
+    const found = await requireProject(project, undefined);
+    if (!state.removePath(found.id, path)) {
       return text(
         `${path} is not one of ${found.name}'s paths. They are:\n` +
-          `${(getProject(db, found.id)?.paths ?? []).map((p) => `  ${p.path}`).join("\n")}`,
+          `${found.paths.map((p) => `  ${p.path}`).join("\n")}`,
       );
     }
-    return text(projectDetailText(getProject(db, found.id)!, notOnDisk));
+    return text(projectDetailText((await store.getProject(found.id))!, state.listPaths(found.id), notOnDisk));
   },
 );
 
@@ -333,9 +339,9 @@ server.registerTool(
     }),
   },
   async ({ from, to, kind, note }) => {
-    const a = requireProject(from, undefined);
-    const b = requireProject(to, undefined);
-    linkProjects(db, a.id, b.id, kind ?? "relates", note);
+    const a = await requireProject(from, undefined);
+    const b = await requireProject(to, undefined);
+    await store.linkProjects(a.id, b.id, kind ?? "relates", note);
     return text(`${a.name} ↔ ${b.name} (${kind ?? "relates"}).`);
   },
 );
@@ -350,9 +356,10 @@ server.registerTool(
     inputSchema: z.object({ project: z.string(), theme: themeSchema }),
   },
   async ({ project, theme }) => {
-    const found = requireProject(project, undefined);
+    const found = await requireProject(project, undefined);
     try {
-      return text(projectDetailText(setProjectTheme(db, found.id, theme)));
+      const themed = await store.setProjectTheme(found.id, theme);
+      return text(projectDetailText(themed, state.listPaths(themed.id)));
     } catch (error) {
       if (error instanceof HueTooCloseError) return text(error.message);
       throw error;
@@ -371,8 +378,8 @@ server.registerTool(
     inputSchema: z.object({ locale: z.enum(LOCALES) }),
   },
   async ({ locale }) => {
-    setLocale(db, locale as Locale);
-    return text(`Language set to ${LOCALE_LABELS[locale as Locale]} (${locale}). ${languageLine()}`);
+    await store.setLocale(locale as Locale);
+    return text(`Language set to ${LOCALE_LABELS[locale as Locale]} (${locale}). ${await languageLine()}`);
   },
 );
 
@@ -398,8 +405,8 @@ server.registerTool(
     }),
   },
   async ({ project, cwd, state, owner, dueBefore, query, allProjects, withSteps }) => {
-    const scoped = allProjects ? undefined : requireProject(project, cwd);
-    const tasks = listTasks(db, {
+    const scoped = allProjects ? undefined : await requireProject(project, cwd);
+    const tasks = await store.listTasks({
       projectId: scoped?.id,
       state,
       ownerSlug: owner,
@@ -408,7 +415,8 @@ server.registerTool(
     });
     const header = `${scoped ? scoped.name : "All projects"} — ${tasks.length} task(s)`;
     if (!withSteps) return text(`${header}\n\n${taskListText(tasks, { showProject: !scoped })}`);
-    const details = tasks.map((t) => taskDetailText(getTask(db, t.id)!)).join("\n\n———\n\n");
+    const full = await Promise.all(tasks.map((t) => store.getTask(t.id)));
+    const details = full.map((t) => taskDetailText(t!)).join("\n\n———\n\n");
     return text(`${header}\n\n${details || "There are none."}`);
   },
 );
@@ -421,7 +429,7 @@ server.registerTool(
     inputSchema: z.object({ task: z.string().describe("Task slug or id.") }),
   },
   async ({ task }) => {
-    const found = getTask(db, /^\d+$/.test(task) ? Number(task) : task);
+    const found = await store.getTask(task);
     if (!found) return text(`No task "${task}".`);
     return text(taskDetailText(found));
   },
@@ -451,15 +459,15 @@ server.registerTool(
     }),
   },
   async ({ project, cwd, alsoProjects, ...input }) => {
-    const scoped = requireProject(project, cwd);
-    const also = (alsoProjects ?? []).map((slug) => requireProject(slug, undefined).id);
-    const created = createTask(db, {
+    const scoped = await requireProject(project, cwd);
+    const also = await Promise.all((alsoProjects ?? []).map(async (slug) => (await requireProject(slug, undefined)).id));
+    const created = await store.createTask({
       ...input,
       projectId: scoped.id,
       alsoProjectIds: also,
       sourcePath: input.sourcePath ?? cwd ?? null,
     });
-    return text(`Recorded in ${scoped.name}.\n\n${taskDetailText(created)}\n\n${boardOrigin()}/t/${created.slug}`);
+    return text(`Recorded in ${scoped.name}.\n\n${taskDetailText(created)}\n\n${taskUrl(created.slug)}`);
   },
 );
 
@@ -481,10 +489,12 @@ server.registerTool(
     }),
   },
   async ({ task, alsoProjects, ...patch }) => {
-    const found = getTask(db, /^\d+$/.test(task) ? Number(task) : task);
+    const found = await store.getTask(task);
     if (!found) return text(`No task "${task}".`);
-    const also = alsoProjects?.map((slug) => requireProject(slug, undefined).id);
-    return text(taskDetailText(updateTask(db, found.id, { ...patch, alsoProjectIds: also })));
+    const also = alsoProjects
+      ? await Promise.all(alsoProjects.map(async (slug) => (await requireProject(slug, undefined)).id))
+      : undefined;
+    return text(taskDetailText(await store.updateTask(found.id, { ...patch, alsoProjectIds: also })));
   },
 );
 
@@ -503,9 +513,9 @@ server.registerTool(
     }),
   },
   async ({ task, phase, steps }) => {
-    const found = getTask(db, /^\d+$/.test(task) ? Number(task) : task);
+    const found = await store.getTask(task);
     if (!found) return text(`No task "${task}".`);
-    return text(taskDetailText(addSteps(db, found.id, steps, phase)));
+    return text(taskDetailText(await store.addSteps(found.id, steps, phase)));
   },
 );
 
@@ -517,7 +527,7 @@ server.registerTool(
       "Corrects a step's text. A step describing a state of the world that has passed is worse than no " +
       "step at all: when something gets automated or stops being necessary, edit it or delete it.",
     inputSchema: z.object({
-      stepId: z.number(),
+      stepId: z.union([z.string(), z.number()]),
       title: z.string().optional(),
       body: z.string().nullish(),
       why: z.string().nullish(),
@@ -528,10 +538,7 @@ server.registerTool(
     }),
   },
   async ({ stepId, ...patch }) => {
-    updateStep(db, stepId, patch);
-    const row = db.prepare("SELECT task_id FROM steps WHERE id = ?").get<{ task_id: number }>(stepId);
-    if (!row) return text(`No step ${stepId}.`);
-    return text(taskDetailText(getTask(db, row.task_id)!));
+    return text(taskDetailText(await store.updateStep(String(stepId), patch)));
   },
 );
 
@@ -544,14 +551,15 @@ server.registerTool(
       "which is how the user understands why the rest is still open. The task becomes complete on its " +
       "own once no step is left open.",
     inputSchema: z.object({
-      stepIds: z.array(z.number()),
+      stepIds: z.array(z.union([z.string(), z.number()])),
       by: z.enum(["user", "agent"]).optional(),
     }),
   },
   async ({ stepIds, by }) => {
-    const taskIds = setStepsDone(db, stepIds, true, by ?? "agent");
+    const taskIds = await store.setStepsDone(stepIds.map(String), true, by ?? "agent");
     if (!taskIds.length) return text("None of those steps exist.");
-    return text(taskIds.map((id) => taskDetailText(getTask(db, id)!)).join("\n\n———\n\n"));
+    const affected = await Promise.all(taskIds.map((id) => store.getTask(id)));
+    return text(affected.map((t) => taskDetailText(t!)).join("\n\n———\n\n"));
   },
 );
 
@@ -560,12 +568,13 @@ server.registerTool(
   {
     title: "Reopen steps",
     description: "Puts steps back to pending.",
-    inputSchema: z.object({ stepIds: z.array(z.number()) }),
+    inputSchema: z.object({ stepIds: z.array(z.union([z.string(), z.number()])) }),
   },
   async ({ stepIds }) => {
-    const taskIds = setStepsDone(db, stepIds, false, "agent");
+    const taskIds = await store.setStepsDone(stepIds.map(String), false, "agent");
     if (!taskIds.length) return text("None of those steps exist.");
-    return text(taskIds.map((id) => taskDetailText(getTask(db, id)!)).join("\n\n———\n\n"));
+    const affected = await Promise.all(taskIds.map((id) => store.getTask(id)));
+    return text(affected.map((t) => taskDetailText(t!)).join("\n\n———\n\n"));
   },
 );
 
@@ -577,9 +586,9 @@ server.registerTool(
     inputSchema: z.object({ task: z.string(), by: z.enum(["user", "agent"]).optional() }),
   },
   async ({ task, by }) => {
-    const found = getTask(db, /^\d+$/.test(task) ? Number(task) : task);
+    const found = await store.getTask(task);
     if (!found) return text(`No task "${task}".`);
-    return text(taskDetailText(setTaskDone(db, found.id, true, by ?? "agent")));
+    return text(taskDetailText(await store.setTaskDone(found.id, true, by ?? "agent")));
   },
 );
 
@@ -588,13 +597,10 @@ server.registerTool(
   {
     title: "Delete a step",
     description: "For a step that stopped making sense. If it merely changed, edit it with update_step.",
-    inputSchema: z.object({ stepId: z.number() }),
+    inputSchema: z.object({ stepId: z.union([z.string(), z.number()]) }),
   },
   async ({ stepId }) => {
-    const row = db.prepare("SELECT task_id FROM steps WHERE id = ?").get<{ task_id: number }>(stepId);
-    if (!row) return text(`No step ${stepId}.`);
-    deleteStep(db, stepId);
-    return text(taskDetailText(getTask(db, row.task_id)!));
+    return text(taskDetailText(await store.deleteStep(String(stepId))));
   },
 );
 
@@ -608,9 +614,9 @@ server.registerTool(
     inputSchema: z.object({ task: z.string() }),
   },
   async ({ task }) => {
-    const found = getTask(db, /^\d+$/.test(task) ? Number(task) : task);
+    const found = await store.getTask(task);
     if (!found) return text(`No task "${task}".`);
-    deleteTask(db, found.id);
+    await store.deleteTask(found.id);
     return text(`Deleted "${found.title}".`);
   },
 );
@@ -629,11 +635,203 @@ server.registerTool(
     }),
   },
   async ({ from, to, kind }) => {
-    const a = getTask(db, /^\d+$/.test(from) ? Number(from) : from);
-    const b = getTask(db, /^\d+$/.test(to) ? Number(to) : to);
+    const a = await store.getTask(from);
+    const b = await store.getTask(to);
     if (!a || !b) return text(`Cannot find ${!a ? from : to}.`);
-    linkTasks(db, a.id, b.id, kind ?? "relates");
-    return text(taskDetailText(getTask(db, a.id)!));
+    await store.linkTasks(a.id, b.id, kind ?? "relates");
+    return text(taskDetailText((await store.getTask(a.id))!));
+  },
+);
+
+/* --------------------------------------------------------------- checkouts */
+
+/** Where this project lives here, falling back to the parent of its first path. */
+function baseFor(project: Project, explicit?: string): string {
+  if (explicit) return resolve(explicit);
+  const recorded = state.projectBase(project.id);
+  if (recorded) return recorded;
+  throw new Error(
+    `No base directory for ${project.slug} on this machine. ` +
+      `Pass \`into\`, or set one with set_project_base.`,
+  );
+}
+
+server.registerTool(
+  "list_repos",
+  {
+    title: "List a project's repositories",
+    description:
+      "The repositories a project is made of, their remotes, and whether each one is checked out on " +
+      "this machine. Use it before import_project, and whenever a path turns out not to exist here.",
+    inputSchema: z.object({
+      project: z.string().optional(),
+      cwd: z.string().optional(),
+    }),
+  },
+  async ({ project, cwd }) => {
+    const scoped = await requireProject(project, cwd);
+    return text(`${scoped.name}\n${repoListText(await store.listRepos(scoped.id), presentAt(scoped.id))}`);
+  },
+);
+
+server.registerTool(
+  "set_project_repo",
+  {
+    title: "Record a repository",
+    description:
+      "Registers one repository of a project: its remote, its branch, and where it sits relative to " +
+      "the others. Give `path` and the remote and branch are read from the checkout there. The key is " +
+      "the name this repository has on every machine, so keep it short and stable.",
+    inputSchema: z.object({
+      project: z.string().optional(),
+      cwd: z.string().optional(),
+      key: z.string().describe("Short stable name: frontend, backend, infra."),
+      path: z.string().optional().describe("A checkout to read the remote and branch from."),
+      remoteUrl: z.string().nullish(),
+      defaultBranch: z.string().nullish(),
+      relativePath: z.string().nullish()
+        .describe("Where it goes under the project's base directory. Leave empty for a repository shared with other projects, which no import can place."),
+      label: z.string().nullish(),
+      role: z.string().nullish(),
+    }),
+  },
+  async ({ project, cwd, key, path, remoteUrl, defaultBranch, relativePath, label, role }) => {
+    const scoped = await requireProject(project, cwd);
+    let detectedRemote = remoteUrl ?? null;
+    let detectedBranch = defaultBranch ?? null;
+    let toplevel: string | null = null;
+
+    if (path) {
+      const found = detectRepo(path);
+      if (!found) throw new Error(`${resolve(path)} is not inside a git checkout.`);
+      toplevel = found.toplevel;
+      detectedRemote = detectedRemote ?? found.remoteUrl;
+      detectedBranch = detectedBranch ?? found.branch;
+    }
+
+    const id = await store.upsertRepo(scoped.id, {
+      key,
+      remoteUrl: detectedRemote,
+      defaultBranch: detectedBranch,
+      relativePath: relativePath ?? null,
+      label: label ?? null,
+      role: role ?? null,
+    });
+    if (toplevel) state.addPath(scoped.id, { path: toplevel, repoId: id, label, role });
+
+    return text(
+      `Recorded ${key} for ${scoped.name}.\n` +
+        `${repoListText(await store.listRepos(scoped.id), presentAt(scoped.id))}`,
+    );
+  },
+);
+
+server.registerTool(
+  "remove_project_repo",
+  {
+    title: "Forget a repository",
+    description:
+      "Removes a repository from a project's description. The checkout on disk is left exactly where " +
+      "it is; only the record that the project is made of it goes away.",
+    inputSchema: z.object({
+      project: z.string().optional(),
+      cwd: z.string().optional(),
+      key: z.string(),
+    }),
+  },
+  async ({ project, cwd, key }) => {
+    const scoped = await requireProject(project, cwd);
+    const removed = await store.removeRepo(scoped.id, key);
+    return text(
+      removed
+        ? `Removed ${key} from ${scoped.name}. Its checkout is untouched.`
+        : `${scoped.name} has no repository called ${key}.`,
+    );
+  },
+);
+
+server.registerTool(
+  "set_project_base",
+  {
+    title: "Set where a project lives here",
+    description:
+      "The directory this project's repositories sit under on this machine. It is per machine: setting " +
+      "it here says nothing about where the project lives anywhere else.",
+    inputSchema: z.object({
+      project: z.string().optional(),
+      cwd: z.string().optional(),
+      path: z.string().describe("A directory, such as ~/Proyectos/costia."),
+    }),
+  },
+  async ({ project, cwd, path }) => {
+    const scoped = await requireProject(project, cwd);
+    const base = state.setProjectBase(scoped.id, path);
+    return text(`${scoped.name} lives under ${base} on this machine.`);
+  },
+);
+
+server.registerTool(
+  "adopt_paths",
+  {
+    title: "Describe a project from its checkouts",
+    description:
+      "Reads every registered path of a project, asks git what repository it is, and records the answers " +
+      "as the project's repositories — remotes, branches and layout. This is what makes a project " +
+      "importable onto another machine, and it needs nothing from the user.",
+    inputSchema: z.object({
+      project: z.string().optional(),
+      cwd: z.string().optional(),
+      apply: z.boolean().optional()
+        .describe("false reports what it found and writes nothing. Defaults to true."),
+    }),
+  },
+  async ({ project, cwd, apply }) => {
+    if (!gitAvailable()) throw new Error("git is not on PATH, so there is nothing to ask about these checkouts.");
+    const scoped = await requireProject(project, cwd);
+    const scan = scanProject(state, scoped);
+    const report = scanText(scan, scoped.name);
+    if (apply === false) return text(`${report}\n\nNothing written. Call again without \`apply: false\` to record it.`);
+    const written = await applyScan(store, state, scoped, scan);
+    return text(`${report}\n\nRecorded ${written} repositor${written === 1 ? "y" : "ies"}.`);
+  },
+);
+
+server.registerTool(
+  "import_project",
+  {
+    title: "Clone a project's repositories here",
+    description:
+      "Recreates a project's checkouts under a directory you choose, cloning what is missing and adopting " +
+      "what is already there. It returns a plan and writes nothing until you call it again with " +
+      "confirm:true — show the user the plan and let them agree to it, because this clones into " +
+      "directories outside anything this plugin owns.",
+    inputSchema: z.object({
+      project: z.string().optional(),
+      cwd: z.string().optional(),
+      into: z.string().optional()
+        .describe("The base directory. Defaults to the one already recorded for this machine."),
+      only: z.array(z.string()).optional().describe("Repository keys, when you want a subset."),
+      confirm: z.boolean().optional().describe("true carries the plan out. Off by default."),
+    }),
+  },
+  async ({ project, cwd, into, only, confirm }) => {
+    if (!gitAvailable()) throw new Error("git is not on PATH, so nothing can be cloned.");
+    const scoped = await requireProject(project, cwd);
+    const base = baseFor(scoped, into);
+    const plan = planImport(
+      scoped,
+      await store.listRepos(scoped.id),
+      state.listPaths(scoped.id).map((p) => p.path),
+      base,
+      { only },
+    );
+
+    if (!confirm) {
+      return text(
+        `${importPlanText(plan)}\n\nNothing has been written. Call import_project again with confirm:true to carry this out.`,
+      );
+    }
+    return text(importResultText(plan, executeImport(state, plan)));
   },
 );
 
@@ -658,13 +856,12 @@ server.registerTool(
     }),
   },
   async ({ project, task, cwd, open }) => {
-    const { ensureUp } = await import("../bin/todos");
     const { url, started } = await ensureUp();
     let target = url;
-    if (task) target = `${url}/t/${task}`;
+    if (task) target = taskUrl(task);
     else {
-      const scoped = project || cwd ? requireProject(project, cwd) : null;
-      if (scoped) target = `${url}/p/${scoped.slug}`;
+      const scoped = project || cwd ? await requireProject(project, cwd) : null;
+      if (scoped) target = projectUrl(scoped.slug);
     }
     if (open) {
       const { spawn } = await import("node:child_process");
@@ -683,9 +880,9 @@ server.registerResource(
   new ResourceTemplate("tasks://project/{slug}/open", { list: undefined }),
   { description: "A project's open tasks, in markdown." },
   async (uri, { slug }) => {
-    const project = getProject(db, String(slug));
+    const project = await store.getProject(String(slug));
     if (!project) return { contents: [{ uri: uri.href, text: `No project "${slug}".` }] };
-    const open = listTasks(db, { projectId: project.id, state: "open" });
+    const open = await store.listTasks({ projectId: project.id, state: "open" });
     return {
       contents: [
         { uri: uri.href, text: `# ${project.name} — open tasks\n\n${taskListText(open)}` },

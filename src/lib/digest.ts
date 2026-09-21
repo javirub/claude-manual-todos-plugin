@@ -6,10 +6,9 @@
  * statusline ends up claiming two overdue while the hook says one. There is one
  * count here and three renderings of it.
  */
-import { connect } from "@/lib/db";
-import { resolveProjectByPath } from "@/lib/db/projects";
-import { listTasks } from "@/lib/db/tasks";
-import type { Project, ProjectPath, TaskSummary } from "@/lib/db/types";
+import type { LocalState } from "@/lib/core/local-state";
+import type { TaskStore } from "@/lib/core/port";
+import type { Project, ProjectPath, TaskSummary } from "@/lib/core/types";
 import { bucketOf } from "@/lib/format/dates";
 import { taskLine, taskListText } from "@/lib/format/text";
 
@@ -25,24 +24,33 @@ export interface Digest {
   viaDescendant: boolean;
 }
 
-export function digestFor(cwd: string, db = connect()): Digest | null {
-  const resolved = resolveProjectByPath(db, cwd);
+export async function digestFor(
+  store: TaskStore,
+  state: LocalState,
+  cwd: string,
+): Promise<Digest | null> {
+  // Resolution is local in both modes, so this first step never waits on a
+  // network — which matters, because the status line calls it on every render.
+  const resolved = state.resolve(cwd)[0];
   if (!resolved) return null;
 
-  const open = listTasks(db, { projectId: resolved.project.id, state: "open" });
+  const project = await store.getProject(resolved.projectSlug);
+  if (!project) return null;
+
+  const open = await store.listTasks({ projectId: project.id, state: "open" });
   const overdue = open.filter((t) => bucketOf(t.dueAt) === "overdue").length;
   const today = open.filter((t) => bucketOf(t.dueAt) === "today").length;
 
   // listTasks already orders by due date then creation, so the head of the list
   // is the answer — no second sort that could disagree with the board's order.
   return {
-    project: resolved.project,
+    project,
     path: resolved.path,
     open,
     overdue,
     today,
     mostUrgent: open[0] ?? null,
-    viaDescendant: resolved.viaDescendant ?? false,
+    viaDescendant: resolved.viaDescendant,
   };
 }
 

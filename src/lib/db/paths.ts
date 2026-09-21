@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
@@ -45,6 +46,23 @@ export function boardOrigin(): string {
  */
 function fold(path: string): string {
   return isWindows || platform() === "darwin" ? path.toLowerCase() : path;
+}
+
+/**
+ * The same directory, spelled the way the filesystem spells it.
+ *
+ * Windows hands out `C:\Users\RUNNER~1\…` through one API and
+ * `C:\Users\runneradmin\…` through another; macOS resolves /tmp through /private;
+ * and a working tree reached through a symlink is the same tree. A path that does
+ * not exist yet has no canonical form, so it falls back to a plain resolve — which
+ * is why callers must not treat the result as proof that anything is on disk.
+ */
+export function canonical(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return resolve(path);
+  }
 }
 
 /**

@@ -1,11 +1,11 @@
 <div align="center">
 
-# Manual todos
+# Manual Tasks
 
 **Keep the work only you can finish out of forgotten chat messages.**
 
 [![CI](https://github.com/javirub/claude-manual-todos-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/javirub/claude-manual-todos-plugin/actions/workflows/ci.yml)
-[![MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+[![BUSL-1.1](https://img.shields.io/badge/licence-BUSL--1.1-blue.svg)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8b5cf6.svg)](https://code.claude.com/docs/en/plugins)
 
 ![Task board showing pending manual work across projects](docs/media/overview.png)
@@ -16,8 +16,9 @@ A console setting to change, an agreement to accept, a review to answer: Claude
 records the manual steps left after its work, with exact values, links and
 dependencies. You work through them on a local board, grouped by project.
 
-No separate account or hosted todos service. Tasks live in SQLite on your machine;
-Claude reads and writes them through the plugin's tools.
+No account needed. Tasks live in SQLite on your machine; Claude reads and writes
+them through the plugin's tools, and nothing leaves the computer unless you ask
+it to.
 
 ## Install and get started
 
@@ -173,4 +174,11 @@ For more diagnostics, use `todos doctor` after enabling the CLI, or follow the
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+[Business Source License 1.1](LICENSE). The source is open and you may run it in
+production — for yourself, your team, or your organisation, on your own servers,
+at any size. The one thing it does not allow is offering it to third parties as a
+commercial hosted service. Four years after each release, that version becomes
+Apache 2.0.
+
+Version 1.1.0 and earlier were released under the MIT License and stay available
+under those terms; see [LICENSE-MIT](LICENSE-MIT).

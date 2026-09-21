@@ -1,0 +1,40 @@
+name: Something is wrong
+description: Behaviour that does not match what the documentation says
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest way to reproduce it
+      description: The commands, in order, from a fresh shell.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: "`todos doctor` prints it, or read `.claude-plugin/plugin.json`."
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: This plugin compares filesystem paths and spawns processes, so it matters more than usual.
+      options: [Linux, macOS, Windows]
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `todos doctor`
+      description: It checks everything that has to be true for the plugin to work, and it prints no task content.
+      render: text
