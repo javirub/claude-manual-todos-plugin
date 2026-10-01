@@ -14,7 +14,7 @@ import {
   resolveProjectByPath,
   setProjectTheme,
 } from "@/lib/db/projects";
-import { addSteps, createTask, getTask, listTasks, setStepsDone, setTaskDone } from "@/lib/db/tasks";
+import { addSteps, createTask, getTask, listTasks, setStepsDone, setTaskDone, updateTask } from "@/lib/db/tasks";
 import type { Sqlite } from "@/lib/db/driver";
 
 function freshDb(): Sqlite {
@@ -317,6 +317,39 @@ describe("tasks across projects", () => {
     setStepsDone(db, [task.looseSteps[0].id], true, "user");
     expect(listTasks(db, { projectId: cluster.id, state: "done" }).map((t) => t.id)).toContain(task.id);
     expect(listTasks(db, { projectId: costia.id, state: "open" })).toEqual([]);
+  });
+
+  test("a task moved to another project keeps its steps, and its owners follow it", () => {
+    const db = freshDb();
+    const costia = seedCostia(db);
+    const finance = createProject(db, { name: "Costia Finance", theme: { hue: 240 } });
+    const cluster = createProject(db, { name: "k3s cluster", theme: { hue: 40 } });
+
+    const task = createTask(db, {
+      projectId: costia.id,
+      alsoProjectIds: [finance.id, cluster.id],
+      title: "Turn on spreadsheet import",
+      steps: [
+        { title: "Push the backend", owner: "gitlab", done: true, doneBy: "agent" },
+        { title: "Flip the flag", owner: "cluster" },
+      ],
+    });
+
+    const moved = updateTask(db, task.id, { projectId: finance.id });
+
+    expect(moved.id).toBe(task.id);
+    expect(moved.projects.filter((p) => p.isPrimary).map((p) => p.slug)).toEqual([finance.slug]);
+    expect(moved.projects.map((p) => p.slug).sort()).toEqual([cluster.slug, finance.slug].sort());
+    expect(listTasks(db, { projectId: costia.id }).map((t) => t.id)).not.toContain(task.id);
+    expect(moved.looseSteps.map((s) => [s.title, s.doneBy, s.owner?.slug])).toEqual([
+      ["Push the backend", "agent", "gitlab"],
+      ["Flip the flag", null, "cluster"],
+    ]);
+    const ownerProjects = db
+      .prepare("SELECT DISTINCT o.project_id FROM steps s JOIN owners o ON o.id = s.owner_id WHERE s.task_id = ?")
+      .all<{ project_id: number | null }>(task.id)
+      .map((r) => r.project_id);
+    expect(ownerProjects.every((id) => id === null || id === finance.id)).toBe(true);
   });
 });
 
