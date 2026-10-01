@@ -477,14 +477,19 @@ server.registerTool(
       dueAt: z.string().nullish(),
       archived: z.boolean().optional(),
       cancelled: z.boolean().optional(),
+      project: z
+        .string()
+        .optional()
+        .describe("Moves the task to this project. Its steps, history and links come with it."),
       alsoProjects: z.array(z.string()).optional(),
     }),
   },
-  async ({ task, alsoProjects, ...patch }) => {
+  async ({ task, project, alsoProjects, ...patch }) => {
     const found = getTask(db, /^\d+$/.test(task) ? Number(task) : task);
     if (!found) return text(`No task "${task}".`);
+    const projectId = project ? requireProject(project, undefined).id : undefined;
     const also = alsoProjects?.map((slug) => requireProject(slug, undefined).id);
-    return text(taskDetailText(updateTask(db, found.id, { ...patch, alsoProjectIds: also })));
+    return text(taskDetailText(updateTask(db, found.id, { ...patch, projectId, alsoProjectIds: also })));
   },
 );
 

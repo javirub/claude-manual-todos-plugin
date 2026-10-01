@@ -483,10 +483,12 @@ export function updateTask(
     dueAt?: string | null;
     archived?: boolean;
     cancelled?: boolean;
+    projectId?: number;
     alsoProjectIds?: number[];
   },
 ): Task {
   return db.transaction(() => {
+    if (patch.projectId !== undefined) moveTask(db, taskId, patch.projectId);
     const sets: string[] = [];
     const values: SqlValue[] = [];
     if (patch.title !== undefined) (sets.push("title = ?"), values.push(patch.title));
@@ -513,6 +515,36 @@ export function updateTask(
     recordEvent(db, "updated", "task", taskId);
     return getTask(db, taskId)!;
   });
+}
+
+/**
+ * Changes which project a task belongs to, keeping its id, steps, history and links.
+ * Owners declared by the old project are re-resolved by slug in the new one, because
+ * an owner is project-scoped and a step must not point at another project's vocabulary.
+ */
+function moveTask(db: Sqlite, taskId: number, projectId: number): void {
+  const primary = db
+    .prepare("SELECT project_id FROM task_projects WHERE task_id = ? AND is_primary = 1")
+    .get<{ project_id: number }>(taskId);
+  if (!primary) throw new Error(`Task ${taskId} does not exist.`);
+  if (primary.project_id === projectId) return;
+
+  const owned = db
+    .prepare(
+      `SELECT s.id, o.slug FROM steps s JOIN owners o ON o.id = s.owner_id
+       WHERE s.task_id = ? AND o.project_id = ?`,
+    )
+    .all<{ id: number; slug: string }>(taskId, primary.project_id);
+  for (const step of owned) {
+    db.prepare("UPDATE steps SET owner_id = ? WHERE id = ?").run(ownerIdFor(db, projectId, step.slug), step.id);
+  }
+
+  // The new home may already list the task as a secondary project; it cannot be both.
+  db.prepare("DELETE FROM task_projects WHERE task_id = ? AND project_id = ? AND is_primary = 0").run(
+    taskId,
+    projectId,
+  );
+  db.prepare("UPDATE task_projects SET project_id = ? WHERE task_id = ? AND is_primary = 1").run(projectId, taskId);
 }
 
 export function deleteTask(db: Sqlite, taskId: number): void {

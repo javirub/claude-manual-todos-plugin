@@ -68,6 +68,7 @@ three times across three sessions.
 | It exists and you resolved some of it in code | `complete_steps({ by: "agent" })` |
 | It exists but its text is no longer true | `update_step`, or `delete_step` if the step is now pointless |
 | It exists and no longer applies at all | `update_task({ archived: true })` — archiving keeps the record, deleting destroys it |
+| It exists but belongs to another project | `update_task({ project })` — moves it with its steps, history and links; never recreate it |
 | It is new and only the user can do it | `create_task` |
 | You could have automated it | Automate it. Do not record it. |
 
