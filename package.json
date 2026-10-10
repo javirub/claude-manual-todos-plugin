@@ -15,7 +15,7 @@
     "shots": "bun scripts/shots.ts",
     "seed:demo": "bun scripts/seed-demo.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun check",
     "lint:messages": "eloqnt lint"
   },
   "dependencies": {
